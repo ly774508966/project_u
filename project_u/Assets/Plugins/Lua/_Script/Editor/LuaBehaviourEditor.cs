@@ -1,0 +1,203 @@
+﻿using UnityEngine;
+using UnityEditor;
+using System;
+using System.Collections.Generic;
+
+namespace lua
+{
+	[CustomEditor(typeof(lua.LuaBehaviour))]
+	public class LuaBehaviourEditor : Editor
+	{
+
+		static Lua lua = new Lua();
+
+		bool initChunkLoadFailed = false;
+		string reason;
+
+		List<string> keys;
+		List<object> values;
+
+		void OnEnable()
+		{
+			var L = lua.luaState;
+
+			var lb = target as LuaBehaviour;
+
+			Api.lua_newtable(L);
+			try
+			{
+				if (lb.IsInitFuncDumped())
+				{
+					Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
+				}
+				else
+				{
+					Api.luaL_requiref(L, lb.scriptName, Lua.LoadScript, 0);
+					Api.lua_getfield(L, -1, "_Init");
+					Api.lua_remove(L, -2); // keep _Init, remove table
+				}
+
+				Api.lua_pushvalue(L, -2);
+				Lua.Call(L, 1, 0);
+			}
+			catch (Exception e)
+			{
+				Api.lua_pop(L, 1);
+				initChunkLoadFailed = true;
+				reason = e.Message;
+			}
+
+			keys = new List<string>();
+			values = new List<object>();
+			// iterate table on stack
+			Api.lua_pushnil(L);
+			while (Api.lua_next(L, -2) != 0)
+			{
+				var key = Api.lua_tostring(L, -2);
+				var value = Lua.CsharpValueFrom(L, -1);
+				keys.Add(key);
+				values.Add(value);
+				Api.lua_pop(L, 1);
+			}
+			Api.lua_pop(L, 1);
+
+			int[] sortedIndex = new int[keys.Count];
+			for (int i = 0; i < sortedIndex.Length; ++i)
+			{
+				sortedIndex[i] = i;
+			}
+			System.Array.Sort(sortedIndex, (a, b) => keys[a].CompareTo(keys[b]));
+			keys.Sort();
+			var newValues = new List<object>();
+			for (int i = 0; i < values.Count; ++i)
+			{
+				newValues.Add(values[sortedIndex[i]]);
+			}
+			values = newValues;
+		}
+
+		public override void OnInspectorGUI()
+		{
+			base.OnInspectorGUI();
+			if (keys == null) return;
+
+			var lb = target as LuaBehaviour;
+
+			EditorGUILayout.Separator();
+			EditorGUILayout.LabelField("Init Values");
+			EditorGUILayout.HelpBox("Init values are set in Script._Init function, and can be deserialized from asset.", MessageType.Info);
+
+			if (GUILayout.Button("Reset"))
+			{
+				lb.SetInitChunk(string.Empty);
+				serializedObject.Update();
+				OnEnable();
+			}
+
+			EditorGUI.BeginChangeCheck();
+
+			for (int i = 0; i < keys.Count; ++i)
+			{
+				var key = keys[i];
+				var value = values[i];
+				EditorGUILayout.BeginHorizontal();
+				{
+					var type = value.GetType();
+					if (type == typeof(System.Double))
+					{
+						values[i] = EditorGUILayout.DoubleField(key, (double)value);
+					}
+					else if (type == typeof(string))
+					{
+						values[i] = EditorGUILayout.TextField(key, (string)value);
+					}
+					else if (type == typeof(Vector3))
+					{
+						values[i] = EditorGUILayout.Vector3Field(key, (Vector3)value);
+					}
+					else
+					{
+						EditorGUILayout.LabelField(string.Format("not support type {0} with key {1}", type, key));
+					}
+				}
+				EditorGUILayout.EndHorizontal();
+			}
+			if (EditorGUI.EndChangeCheck())
+			{
+				DumpInitValues();
+			}
+
+			EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
+		}
+
+		void DumpInitValues()
+		{
+			Debug.Assert(keys != null);
+			var sb = new System.Text.StringBuilder();
+			sb.AppendLine("function _Init(instance)");
+			for (int i = 0; i < keys.Count; ++i)
+			{
+				var key = keys[i];
+				var value = values[i];
+				string importLiteral, typeConstructionLiteral;
+				GetLuaTypeLiterial(i, value, out importLiteral, out typeConstructionLiteral);
+				if (!string.IsNullOrEmpty(importLiteral))
+				{
+					sb.AppendLine(importLiteral);
+				}
+				sb.AppendLine(string.Format("instance.{0} = {1}", key, GetLuaValueLiterial(typeConstructionLiteral, value)));
+			}
+			sb.AppendLine("end");
+
+			var chunk = sb.ToString();
+			Debug.Log(chunk);
+
+			try
+			{
+				Api.luaL_dostring(lua.luaState, chunk);
+				Api.lua_getglobal(lua.luaState, "_Init");
+				var dumped = Lua.DumpChunk(lua.luaState);
+				var lb = target as LuaBehaviour;
+				lb.SetInitChunk(dumped);
+				serializedObject.Update();
+				Api.lua_pop(lua.luaState, 1);
+			}
+			catch (Exception e)
+			{
+				Debug.LogError(e.Message);
+			}
+		}
+
+		void GetLuaTypeLiterial(int idx, object value, out string importLiteral, out string typeConstructionLiteral)
+		{
+			importLiteral = string.Empty;
+			typeConstructionLiteral = string.Empty;
+			var type = value.GetType();
+			if (!type.IsPrimitive)
+			{
+				if (type != typeof(string))
+				{
+					var typeLiteral = "_" + idx;
+					importLiteral = string.Format("local {0} = csharp.import('{1}')", typeLiteral, type.AssemblyQualifiedName);
+					typeConstructionLiteral = typeLiteral;
+				}
+			}
+		}
+
+		string GetLuaValueLiterial(string typeConstructionLiteral, object value)
+		{
+			var type = value.GetType();
+			if (type == typeof(string))
+			{
+				return string.Format("'{0}'", ((string)value).Replace("'", "\\'")); // escape '
+			}
+			else if (type == typeof(Vector3))
+			{
+				return typeConstructionLiteral + value.ToString();
+			}
+			return value.ToString();
+		}
+	}
+
+
+}

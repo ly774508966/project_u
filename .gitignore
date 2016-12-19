@@ -1,0 +1,5 @@
+project_u/Library
+project_u/Temp
+*.csproj
+*.sln
+*.suo

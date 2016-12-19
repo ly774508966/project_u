@@ -1,0 +1,8 @@
+[submodule "libs/lua"]
+	path = libs/lua
+	url = https://github.com/xiaobin83/lua
+	branch = master
+[submodule "libs/protoc-gen-lua"]
+	path = libs/protoc-gen-lua
+	url = https://github.com/xiaobin83/protoc-gen-lua
+	branch = master

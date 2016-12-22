@@ -4,6 +4,29 @@ using System.Collections.Generic;
 
 namespace lua
 {
+
+	/*
+	 * 
+	 *  -- A LuaBehaviour script, MyLuaBehaviour.lua
+	 *  
+	 * 	local MyLuaBehaviour = {}
+	 * 	
+	 *  -- _Init function for new behaviour instance
+	 *  function MyLuaBehaviour._Init(instance) -- notice, it use dot `.' to define _Init function (`static' function)
+	 * 		instance.value0 = 32
+	 * 		instance.value1 = 'abc'
+	 * 
+	 * 		local Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine') -- import a type from C#
+	 * 		instance.value2 = Vector3(1, 2, 3)
+	 *  end
+	 * 
+	 *  -- When a new gameobject which has LuaBehaviour component with MyLuaBehaviour.lua attached Awake
+	 *  -- from deserialized data, it will create an empty table as an instance of this Lua component
+	 *  -- and pass to _Init function. 
+	 * 
+	 * 
+	 */
+
 	public class LuaBehaviour : MonoBehaviour
 	{
 		public string scriptName;

@@ -14,11 +14,16 @@ namespace lua
 		bool initChunkLoadFailed = false;
 		string reason;
 
+		bool editSerializedChunk;
+
 		List<string> keys;
 		List<object> values;
 
-		void OnEnable()
+		void Reload()
 		{
+			initChunkLoadFailed = false;
+			reason = string.Empty;
+
 			var L = lua.luaState;
 
 			var lb = target as LuaBehaviour;
@@ -47,6 +52,12 @@ namespace lua
 				reason = e.Message;
 			}
 
+			if (initChunkLoadFailed) 
+			{
+				return;
+			}
+
+			// prepare to show on Inspector
 			keys = new List<string>();
 			values = new List<object>();
 			// iterate table on stack
@@ -76,10 +87,39 @@ namespace lua
 			values = newValues;
 		}
 
+		void HandleUndoRedo()
+		{
+			var groupName = Undo.GetCurrentGroupName();
+			Debug.Log(groupName);
+			if (!string.IsNullOrEmpty(groupName) && groupName.StartsWith("LuaBehaviour."))
+			{
+				Reload();
+				Repaint();
+			}
+		}
+
+
+
+		void OnEnable()
+		{
+			Undo.undoRedoPerformed += HandleUndoRedo;
+			Reload();
+		}
+
+		void OnDisable()
+		{
+			Undo.undoRedoPerformed -= HandleUndoRedo;
+		}
+
 		public override void OnInspectorGUI()
 		{
 			base.OnInspectorGUI();
-			if (keys == null) return;
+			
+
+			if (initChunkLoadFailed) 
+			{
+				EditorGUILayout.HelpBox ("_Init function error: " + reason, MessageType.Error);
+			}
 
 			var lb = target as LuaBehaviour;
 
@@ -89,10 +129,17 @@ namespace lua
 
 			if (GUILayout.Button("Reset"))
 			{
+				// reset original _Init function defined in script
+				Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
 				lb.SetInitChunk(string.Empty);
-				serializedObject.Update();
-				OnEnable();
+				Reload();
 			}
+
+			if (initChunkLoadFailed) 
+				return;
+
+			if (keys == null)
+				return;
 
 			EditorGUI.BeginChangeCheck();
 
@@ -128,6 +175,18 @@ namespace lua
 			}
 
 			EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
+			editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
+			if (editSerializedChunk) 
+			{
+				var original = lb.GetInitChunk();
+				var changed = EditorGUILayout.TextArea(original);
+				if (changed != lb.GetInitChunk())
+				{
+					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
+					lb.SetInitChunk(changed.Trim());
+					Reload();
+				}
+			}
 		}
 
 		void DumpInitValues()
@@ -158,6 +217,7 @@ namespace lua
 				Api.lua_getglobal(lua.luaState, "_Init");
 				var dumped = Lua.DumpChunk(lua.luaState);
 				var lb = target as LuaBehaviour;
+				Undo.RecordObject(lb, "LuaBehaviour.ChangeInitValues");
 				lb.SetInitChunk(dumped);
 				serializedObject.Update();
 				Api.lua_pop(lua.luaState, 1);

@@ -4,6 +4,48 @@ using System.Collections.Generic;
 
 namespace lua
 {
+
+	/*
+	 * 
+	 *  -- A LuaBehaviour script, MyLuaBehaviour.lua
+	 *  
+	 * 	local MyLuaBehaviour = {}
+	 * 	
+	 *  -- _Init function for new behaviour instance
+	 *  function MyLuaBehaviour._Init(instance) -- notice, it use dot `.' to define _Init function (`static' function)
+	 * 		instance.value0 = 32
+	 * 		instance.value1 = 'abc'
+	 * 
+	 * 		local Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine') -- import a type from C#
+	 * 		instance.value2 = Vector3(1, 2, 3)
+	 *  end
+	 * 
+	 *  -- When a new GameObject which has LuaBehaviour component with MyLuaBehaviour.lua attached Awake
+	 *  -- from deserialized data, it will create an empty table as instance of this Lua component.
+	 *  -- The instance is passed to _Init function for initialization. 
+	 *  -- All values set to instance can be serialized with GameObject. In fact, the function it self is serialized.
+	 *  -- And those values will show in Inspector. Any tweaking on those values also can be serialized as new _Init
+	 *  -- function.
+	 *  -- When Awake from deserialized data, _Init function is loaded and 'hides' the original _Init function.
+	 *  -- ( implemented by __index meta method )
+	 * 
+	 * 
+	 *  -- called at the end of host LuaBehaviour.Awake. 
+	 *  function MyLuaBehaviour:Awake()
+	 * 		-- awake
+	 *  end
+	 * 
+	 * 	-- called at LuaBehaviour.Update
+	 *  function MyLuaBehaviour:Update()
+	 * 		-- update
+	 *  end
+	 * 
+	 *  -- You can also have other messages which defined in enum LuaBehaviour.Message.
+	 *  -- For performance reason, those *Update messages are combined in different components, LuaInstanceBehaviour*
+	 * 
+	 * 	return MyLuaBehaviour -- Important! Return the `class' to host, and becoming the `meta-class' of instance.
+	 */
+
 	public class LuaBehaviour : MonoBehaviour
 	{
 		public string scriptName;

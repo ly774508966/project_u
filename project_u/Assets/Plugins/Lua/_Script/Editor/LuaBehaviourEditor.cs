@@ -99,7 +99,7 @@ namespace lua
 		}
 
 
-
+		GUIStyle errorTextFieldStyle, normalTextFieldStyle;
 		void OnEnable()
 		{
 			Undo.undoRedoPerformed += HandleUndoRedo;
@@ -111,9 +111,80 @@ namespace lua
 			Undo.undoRedoPerformed -= HandleUndoRedo;
 		}
 
+		HashSet<string> gameObjectNames = new HashSet<string>();
+		void OnInspectorGUI_GameObjectMap()
+		{
+			gameObjectNames.Clear();
+
+			var serializedKeys = serializedObject.FindProperty("keys");
+			var serializedGameObjects = serializedObject.FindProperty("gameObjects");
+			Debug.Assert(serializedKeys.arraySize == serializedGameObjects.arraySize);
+
+			EditorGUILayout.BeginVertical();
+			var idToDelete = -1;
+			bool hasDuplicatedName = false;
+			for (int i = 0; i < serializedKeys.arraySize; ++i)
+			{
+				var propKey = serializedKeys.GetArrayElementAtIndex(i);
+				var propGameObject = serializedGameObjects.GetArrayElementAtIndex(i);
+
+				EditorGUILayout.BeginHorizontal();
+
+				var nameDuplicated = !gameObjectNames.Add(propKey.stringValue);
+				hasDuplicatedName = hasDuplicatedName || nameDuplicated;
+
+				propKey.stringValue = 
+					EditorGUILayout.TextField(
+						i.ToString() + ".", 
+						propKey.stringValue, 
+						nameDuplicated ? errorTextFieldStyle : normalTextFieldStyle);
+				propGameObject.objectReferenceValue = 
+					EditorGUILayout.ObjectField(
+						propGameObject.objectReferenceValue,
+						typeof(GameObject),
+						allowSceneObjects: true);
+				if (GUILayout.Button("X"))
+				{
+					idToDelete = i;
+				}
+				EditorGUILayout.EndHorizontal();
+			}
+			EditorGUILayout.EndVertical();
+
+			if (hasDuplicatedName)
+			{
+				EditorGUILayout.HelpBox(
+					"Duplicated name of attached GameObject found! GameObject may not be found correctly in script!",
+					MessageType.Error);
+			}
+
+			if (idToDelete != -1)
+			{
+				Undo.RecordObject(target, "LuaBehaviour.RemoveGameObject");
+				serializedKeys.DeleteArrayElementAtIndex(idToDelete);
+				serializedGameObjects.DeleteArrayElementAtIndex(idToDelete);
+			}
+
+			if (GUILayout.Button("Attach New GameObject"))
+			{
+				Undo.RecordObject(target, "LuaBehaviour.RemoveGameObject");
+				++serializedKeys.arraySize;
+				++serializedGameObjects.arraySize;
+			}
+
+			serializedObject.ApplyModifiedProperties();
+		}
+
 		public override void OnInspectorGUI()
 		{
 			base.OnInspectorGUI();
+
+			errorTextFieldStyle = new GUIStyle(EditorStyles.textField);
+			errorTextFieldStyle.normal.textColor = Color.red;
+			normalTextFieldStyle = new GUIStyle(EditorStyles.textField);
+
+
+			OnInspectorGUI_GameObjectMap();
 			
 
 			if (initChunkLoadFailed) 
@@ -209,7 +280,7 @@ namespace lua
 			sb.AppendLine("end");
 
 			var chunk = sb.ToString();
-			Debug.Log(chunk);
+			// Debug.Log(chunk);
 
 			try
 			{

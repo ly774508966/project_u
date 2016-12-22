@@ -1,6 +1,5 @@
 local UnityDebug = csharp.import("UnityEngine.Debug, UnityEngine")
 local Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine')
-
 local LuaExample = {
 	staticValue0 = 52
 }
@@ -20,6 +19,13 @@ function LuaExample:Awake(instance)
 	UnityDebug.Log(instance.value0)
 	UnityDebug.Log(LuaExample.value0)
 	UnityDebug.Log('staticValue0 = '..instance.staticValue0)
+
+	local obj = self:FindGameObjectByKey('MyObject')
+	if obj then
+		UnityDebug.Log('Found object with key MyObject, it named ' .. obj.name)
+	else
+		UnityDebug.Log('Cannot find object with key MyObject')
+	end
 end
 
 function LuaExample:Update(instance)

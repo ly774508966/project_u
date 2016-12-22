@@ -21,22 +21,24 @@ namespace lua
 	 *  end
 	 * 
 	 *  -- When a new GameObject which has LuaBehaviour component with MyLuaBehaviour.lua attached Awake
-	 *  -- from deserialized data, it will create an empty table as instance of this Lua component.
-	 *  -- The instance is passed to _Init function for initialization. 
-	 *  -- All values set to instance can be serialized with GameObject. In fact, the function it self is serialized.
+	 *  -- from deserialized data, it will create an empty table as instance of this Lua component (aka behaviour table).
+	 *  -- The instance (behaviour table) is passed to _Init function for initialization. 
+	 *  -- All values set to instance *in _Init function* can be serialized with GameObject. In fact, the function it self is serialized.
 	 *  -- And those values will show in Inspector. Any tweaking on those values also can be serialized as new _Init
 	 *  -- function.
-	 *  -- When Awake from deserialized data, _Init function is loaded and 'hides' the original _Init function.
-	 *  -- ( implemented by __index meta method )
+	 *  -- When Awake from deserialized data, _Init function is loaded and 'hides' the original _Init function. 
+	 *	-- The your version of _Init function is executed to restore values serialized.
+	 *	-- And behaviour table all so can be used to save local value at run-time.
 	 * 
 	 * 
 	 *  -- called at the end of host LuaBehaviour.Awake. 
-	 *  function MyLuaBehaviour:Awake()
+	 *  function MyLuaBehaviour:Awake(instance) -- behaviour table
 	 * 		-- awake
+	 * 		instance.some_value = self:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
 	 *  end
 	 * 
 	 * 	-- called at LuaBehaviour.Update
-	 *  function MyLuaBehaviour:Update()
+	 *  function MyLuaBehaviour:Update(instance)
 	 * 		-- update
 	 *  end
 	 * 
@@ -50,6 +52,12 @@ namespace lua
 	{
 		public string scriptName;
 
+		[SerializeField]
+		[HideInInspector]
+		string[] keys;
+		[SerializeField]
+		[HideInInspector]
+		GameObject[] gameObjects;
 
 		MonoBehaviour instanceBehaviour;
 
@@ -240,6 +248,26 @@ namespace lua
 			}
 			return false;
 		}
+
+		// non-throw
+		public GameObject FindGameObjectByKey(string key)
+		{
+			var index = System.Array.FindIndex(keys, (k) => k == key);
+			if (index != -1)
+				return GetGameObjectAtIndex(index);
+			return null;
+		}
+
+		// non-throw
+		public GameObject GetGameObjectAtIndex(int index)
+		{
+			if (index >= 0 && index < gameObjects.Length)
+			{
+				return gameObjects[index];
+			}
+			return null;
+		}
+
 
 #if UNITY_EDITOR
 		public bool IsInitFuncDumped()

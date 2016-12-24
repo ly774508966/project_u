@@ -307,6 +307,8 @@ namespace lua
 					return (type == typeof(System.Boolean));
 				case Api.LUA_TLIGHTUSERDATA:
 					return (type == typeof(System.IntPtr) || type == typeof(System.UIntPtr));
+				case Api.LUA_TFUNCTION:
+					return typeof(System.Delegate).IsAssignableFrom(type);
 				case Api.LUA_TNIL:
 					if (arg.IsOut) // if is out, we can pass nil in
 					{
@@ -350,6 +352,42 @@ namespace lua
 			return null;
 		}
 
+		static System.Reflection.MethodInfo delegateToLuaFunction_;
+		static System.Reflection.MethodInfo delegateToLuaFunction
+		{
+			get 
+			{
+				if (delegateToLuaFunction_ == null)
+				{
+					var mi = typeof(Lua).GetMethod("DelegateToLuaFunction", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+					delegateToLuaFunction_ = mi;
+				}
+				return delegateToLuaFunction_;
+			}
+		}
+
+		static object DelegateToLuaFunction(params object[] args)
+		{
+			Debug.Log("called here");
+			return null;
+		}
+
+		class LuaInvokingContext
+		{
+			int refToLuaFunc;
+			public LuaInvokingContext(int refToLuaFunc)
+			{
+				this.refToLuaFunc = refToLuaFunc;	
+			}
+		}
+			
+		static object MakeLuaInvokingContext(IntPtr L, int luaFuncIndex)
+		{
+			Api.lua_pushvalue(L, luaFuncIndex);
+			var refToLuaFunc = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+			return new LuaInvokingContext(refToLuaFunc);
+		}
+
 		static object[] CsharpArgsFrom(IntPtr L, System.Reflection.ParameterInfo[] args, int argStart, int numArgs)
 		{
 			if (args == null || args.Length == 0)
@@ -386,6 +424,10 @@ namespace lua
 					case Api.LUA_TUSERDATA:
 						actualArgs[idx] = ToCsharpObject(L, i);
 						break;
+					case Api.LUA_TFUNCTION:
+						Debug.LogWarning("Find way to create a func and call lua function in side");
+						Debug.LogWarning("and this func should be a delegate used by C# func");
+						break;	
 					case Api.LUA_TNIL:
 						if (arg.IsOut)
 						{

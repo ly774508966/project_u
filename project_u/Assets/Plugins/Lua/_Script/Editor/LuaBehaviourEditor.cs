@@ -113,7 +113,7 @@ namespace lua
 		void HandleUndoRedo()
 		{
 			var groupName = Undo.GetCurrentGroupName();
-			Debug.Log(groupName);
+			// Debug.Log(groupName);
 			if (!string.IsNullOrEmpty(groupName) && groupName.StartsWith("LuaBehaviour."))
 			{
 				Reload();
@@ -252,9 +252,21 @@ namespace lua
 					{
 						values[i] = EditorGUILayout.TextField(key, (string)value);
 					}
+					else if (type == typeof(Vector4))
+					{
+						values[i] = EditorGUILayout.Vector4Field(key, (Vector4)value);
+					}
 					else if (type == typeof(Vector3))
 					{
 						values[i] = EditorGUILayout.Vector3Field(key, (Vector3)value);
+					}
+					else if (type == typeof(Vector2))
+					{
+						values[i] = EditorGUILayout.Vector2Field(key, (Vector2)value);
+					}
+					else if (type == typeof(Color))
+					{
+						values[i] = EditorGUILayout.ColorField(key, (Color)value);
 					}
 					else
 					{
@@ -345,9 +357,18 @@ namespace lua
 			{
 				return string.Format("'{0}'", ((string)value).Replace("'", "\\'")); // escape '
 			}
-			else if (type == typeof(Vector3))
+			else if (type == typeof(Vector4)
+			         || type == typeof(Vector3)
+			         || type == typeof(Vector2))
 			{
 				return typeConstructionLiteral + value.ToString();
+			}
+			else if (type == typeof(Color))
+			{
+				var c = (Color)value;
+				return string.Format("{0}({1}, {2}, {3}, {4})", 
+					typeConstructionLiteral,
+					c.r, c.g, c.b, c.a);
 			}
 			return value.ToString();
 		}

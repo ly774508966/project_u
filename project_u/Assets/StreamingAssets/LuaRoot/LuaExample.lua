@@ -1,14 +1,15 @@
 local UnityDebug = csharp.import("UnityEngine.Debug, UnityEngine")
 local Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine')
+local Color = csharp.import('UnityEngine.Color, UnityEngine')
 local LuaExample = {
 	staticValue0 = 52
 }
 
 function LuaExample._Init(instance)
-	local Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine')
 	instance.value0 = 32
 	instance.value1 = 'hello'
 	instance.value2 = Vector3(1, 2, 3)
+	instance.color = Color.white;
 end
 
 function LuaExample:Awake(instance)

@@ -42,6 +42,21 @@ namespace lua
 		List<string> keys;
 		List<object> values;
 
+		const string mergeFunction =
+			"function merge(orig, cur)\n" +
+			// "  Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" + 
+			"  merged = {}\n" +
+			"  for k, v in pairs(orig) do\n" +
+			// "    Debug.Log(k)\n" +
+			"    if cur[k] then\n" +
+			"      merged[k] = cur[k]\n" +
+			"    else\n" +
+			"      merged[k] = v\n" +
+			"    end\n" +
+			"  end\n" +
+			"  return merged\n" +
+			"end\n";
+
 		void Reload()
 		{
 			initChunkLoadFailed = false;
@@ -51,34 +66,109 @@ namespace lua
 
 			var lb = target as LuaBehaviour;
 
-			Api.lua_newtable(L);
+			// load from script
+			Api.lua_pushcclosure(L, Lua.LoadScript, 0);
+			Api.lua_pushstring(L, lb.scriptName);
+			try 
+			{
+				Lua.Call(L, 1, 1);
+			}
+			catch (Exception e)
+			{
+				initChunkLoadFailed = true;
+				reason = e.Message;	
+				return;
+			}
+
+			var luaType = Api.lua_getfield(L, -1, "_Init");
+			Api.lua_remove(L, -2); // keep _Init, remove table
+			if (luaType != Api.LUA_TFUNCTION)
+			{
+				Api.lua_pop(L, 1); // pop func
+				lb.SetInitChunk(string.Empty); // no _Init chunk anymore
+				serializedObject.Update();
+				return;
+			}
+
+			// stack: func
+
+			// call Script._Init on instance
+			Api.lua_newtable(L); // oringal table
+			// stack: func, table
+			Api.lua_pushvalue(L, -1); // push again, stack: func, table, table
+			var refToOriginal = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX); // stack: func, table
 			try
 			{
-				if (lb.IsInitFuncDumped())
-				{
-					Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
-				}
-				else
-				{
-					Api.luaL_requiref(L, lb.scriptName, Lua.LoadScript, 0);
-					Api.lua_getfield(L, -1, "_Init");
-					Api.lua_remove(L, -2); // keep _Init, remove table
-				}
-
-				Api.lua_pushvalue(L, -2);
 				Lua.Call(L, 1, 0);
 			}
 			catch (Exception e)
 			{
-				Api.lua_pop(L, 1);
+				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, refToOriginal);
 				initChunkLoadFailed = true;
 				reason = e.Message;
-			}
-
-			if (initChunkLoadFailed) 
-			{
 				return;
 			}
+
+			// stack: *empty*
+
+			if (lb.IsInitFuncDumped())
+			{
+				Api.lua_newtable(L); // new table for loading valued from dumpped _Init function
+
+				Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
+				// stack: table, func
+				Api.lua_pushvalue(L, -2);
+				// stack: table, func, table
+
+				try
+				{
+					Lua.Call(L, 1, 0);
+				}
+				catch (Exception e)
+				{
+					Api.lua_pop(L, 1); // pop table
+					Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, refToOriginal);
+					initChunkLoadFailed = true;
+					reason = e.Message;
+					return;	
+				}
+
+				// stack: table
+
+				// merge two tables
+				// -1: deserialized values
+
+				Api.luaL_dostring(L, mergeFunction);
+				luaType = Api.lua_getglobal(L, "merge");
+				// stack: table, func
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToOriginal);
+				// stack: table, func, original table
+				Api.lua_pushvalue(L, -3);
+				// stack: table, func, original table, table
+				Api.lua_remove(L, -4);
+				// stack: func, original table, table
+
+				try
+				{
+					Lua.Call(L, 2, 1);
+				}
+				catch (Exception e)
+				{
+					Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, refToOriginal);
+					initChunkLoadFailed = true;
+					reason = e.Message;					
+					return;
+				}
+
+				// stack: merged table
+			}
+			else
+			{
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToOriginal);
+				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, refToOriginal);
+				// stack: orignal table
+			}
+
 
 			// prepare to show on Inspector
 			keys = new List<string>();
@@ -93,7 +183,8 @@ namespace lua
 				values.Add(value);
 				Api.lua_pop(L, 1);
 			}
-			Api.lua_pop(L, 1);
+			Api.lua_pop(L, 1); // pop table
+			// stack: *empty*
 
 			int[] sortedIndex = new int[keys.Count];
 			for (int i = 0; i < sortedIndex.Length; ++i)
@@ -108,6 +199,12 @@ namespace lua
 				newValues.Add(values[sortedIndex[i]]);
 			}
 			values = newValues;
+
+			if (lb.IsInitFuncDumped())
+			{
+				// dump again, in case of Script._Init and Behaviour._Init being merged.
+				DumpInitValues(); 
+			}
 		}
 
 		void HandleUndoRedo()
@@ -133,6 +230,19 @@ namespace lua
 		{
 			Undo.undoRedoPerformed -= HandleUndoRedo;
 		}
+
+		// if _Init func changed and also dumped, merge this two parts and dump again
+		void OnInspectorGUI_CheckReimported()
+		{
+			var lb = target as LuaBehaviour;
+			var path = Lua.GetScriptPath(lb.scriptName);
+			if (WatchingLuaSources.IsReimported(path))
+			{
+				Reload();
+				WatchingLuaSources.SetProcessed(path);
+			}
+		}
+
 
 		HashSet<string> gameObjectNames = new HashSet<string>();
 		void OnInspectorGUI_GameObjectMap()
@@ -202,11 +312,13 @@ namespace lua
 		{
 			base.OnInspectorGUI();
 
+
+
 			errorTextFieldStyle = new GUIStyle(EditorStyles.textField);
 			errorTextFieldStyle.normal.textColor = Color.red;
 			normalTextFieldStyle = new GUIStyle(EditorStyles.textField);
 
-
+			OnInspectorGUI_CheckReimported();
 			OnInspectorGUI_GameObjectMap();
 			
 
@@ -216,6 +328,7 @@ namespace lua
 			}
 
 			var lb = target as LuaBehaviour;
+	
 
 			EditorGUILayout.Separator();
 			EditorGUILayout.LabelField("Init Values");
@@ -280,7 +393,8 @@ namespace lua
 				DumpInitValues();
 			}
 
-			EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
+			// EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
+			EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk().Length + " bytes dumped.", MessageType.None);
 			editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
 			if (editSerializedChunk) 
 			{
@@ -295,22 +409,33 @@ namespace lua
 			}
 		}
 
+		struct Pair<T1, T2>
+		{
+			public T1 p0;
+			public T1 p1;
+		}
+
 		void DumpInitValues()
 		{
 			Debug.Assert(keys != null);
 			var sb = new System.Text.StringBuilder();
 			sb.AppendLine("function _Init(instance)");
+			var importedTypes = new Dictionary<Type, Pair<string, string>>();
 			for (int i = 0; i < keys.Count; ++i)
 			{
 				var key = keys[i];
 				var value = values[i];
-				string importLiteral, typeConstructionLiteral;
-				GetLuaTypeLiterial(i, value, out importLiteral, out typeConstructionLiteral);
-				if (!string.IsNullOrEmpty(importLiteral))
+				Pair<string, string> literials;
+				if (!importedTypes.TryGetValue(value.GetType(), out literials))
 				{
-					sb.AppendLine(importLiteral);
+					GetLuaTypeLiterial(i, value, out literials.p0, out literials.p1);
+					importedTypes.Add(value.GetType(), literials);
+					if (!string.IsNullOrEmpty(literials.p0))
+					{						
+						sb.AppendLine(literials.p0);
+					}
 				}
-				sb.AppendLine(string.Format("instance.{0} = {1}", key, GetLuaValueLiterial(typeConstructionLiteral, value)));
+				sb.AppendLine(string.Format("instance.{0} = {1}", key, GetLuaValueLiterial(literials.p1, value)));
 			}
 			sb.AppendLine("end");
 
@@ -333,6 +458,7 @@ namespace lua
 				Debug.LogError(e.Message);
 			}
 		}
+
 
 		void GetLuaTypeLiterial(int idx, object value, out string importLiteral, out string typeConstructionLiteral)
 		{

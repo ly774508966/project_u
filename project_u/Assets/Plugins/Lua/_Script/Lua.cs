@@ -75,12 +75,22 @@ namespace lua
 			return 1;
 		}
 
-		public static int LoadScript(IntPtr L)
+		public static string GetScriptPath(string scriptName)
 		{
-			var scriptName = Api.luaL_checkstring(L, 1);
 			var path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
 			path = System.IO.Path.Combine(path, scriptName);
 			path = path + ".lua";
+			if (System.IO.Path.DirectorySeparatorChar != '/')
+			{
+				path = path.Replace(System.IO.Path.DirectorySeparatorChar, '/');
+			}
+			return path;
+		}
+
+		public static int LoadScript(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			var path = GetScriptPath(scriptName);
 			Api.luaL_loadfile(L, path);
 			try
 			{
@@ -91,6 +101,7 @@ namespace lua
 				Debug.LogError(e.Message);
 				Api.lua_pushnil(L);
 			}
+
 			return 1;
 		}
 

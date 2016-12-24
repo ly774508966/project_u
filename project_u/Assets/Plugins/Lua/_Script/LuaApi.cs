@@ -527,7 +527,7 @@ namespace lua
 			luaL_setfuncs(L, l, 0);
 		}
 
-		public static void Assert(IntPtr L, bool condition, string message = "Assertion false!")
+		public static void Assert(IntPtr L, bool condition, string message = "Assertion failed!")
 		{
 			if (!condition)
 			{

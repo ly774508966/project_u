@@ -267,6 +267,11 @@ namespace lua
 				case Api.LUA_TLIGHTUSERDATA:
 					return (type == typeof(System.IntPtr) || type == typeof(System.UIntPtr));
 				case Api.LUA_TNIL:
+					if (arg.IsOut) // if is out, we can pass nil in
+					{
+						return true;
+					}
+					return (type == typeof(object));
 				case Api.LUA_TNONE:
 					return (type == typeof(object));
 			}
@@ -295,6 +300,15 @@ namespace lua
 
 		static readonly object[] csharpArgs_NoArgs = null;
 
+		static object GetDefaultValue(Type type)
+		{
+			if (type.IsValueType)
+			{
+				return Activator.CreateInstance(type);
+			}
+			return null;
+		}
+
 		static object[] CsharpArgsFrom(IntPtr L, System.Reflection.ParameterInfo[] args, int argStart, int numArgs)
 		{
 			if (args == null || args.Length == 0)
@@ -309,6 +323,7 @@ namespace lua
 				var arg = args[idx];
 				var type = arg.ParameterType;
 				var luaType = Api.lua_type(L, i);
+
 				switch (luaType)
 				{
 					case Api.LUA_TNUMBER:
@@ -326,6 +341,12 @@ namespace lua
 					case Api.LUA_TUSERDATA:
 						actualArgs[idx] = ToCsharpObject(L, i);
 						break;
+					case Api.LUA_TNIL:
+						if (arg.IsOut)
+						{
+							actualArgs[idx] = GetDefaultValue(type);
+						}
+						break;
 					default:
 						if (type != typeof(string) && type != typeof(System.Object))
 						{
@@ -334,6 +355,7 @@ namespace lua
 						actualArgs[idx] = Api.lua_tostring(L, i);
 						break;
 				}
+
 			}
 			return actualArgs;
 		}
@@ -527,12 +549,30 @@ namespace lua
 			{
 				parameters = method.GetParameters();
 			}
-			var retVal = method.Invoke(target, CsharpArgsFrom(L, parameters, argStart, numArgs));
-			// TODO: multi-ret (ref value, out value)
-			if (retVal != null)
+			try
 			{
-				PushCsharpValue(L, retVal);
-				return 1;
+				var actualArgs = CsharpArgsFrom(L, parameters, argStart, numArgs);
+				var retVal = method.Invoke(target, actualArgs);
+				// TODO: multi-ret (ref value, out value)
+				int outValues = 0;
+				if (retVal != null)
+				{
+					PushCsharpValue(L, retVal);
+					++outValues;
+				}
+				for (int i = 0; i < parameters.Length; ++i)
+				{
+					if (parameters[i].IsOut)
+					{
+						PushCsharpValue(L, actualArgs[i]);
+						++outValues;
+					}
+				}
+				return outValues;
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(L, e);
 			}
 			return 0;
 		}

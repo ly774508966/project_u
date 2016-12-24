@@ -158,14 +158,14 @@ namespace lua
 			output.Write(toWrite, 0, toWrite.Length);
 			return 0;
 		}
-		public static string DumpChunk(IntPtr L)
+		public static string DumpChunk(IntPtr L, bool strip = true)
 		{
 			if (!Api.lua_isfunction(L, -1))
 				return string.Empty;
 
 			var output = new System.IO.MemoryStream();
 			var outputHandle = GCHandle.Alloc(output);
-			Api.lua_dump(L, ChunkWriter, GCHandle.ToIntPtr(outputHandle), 0);
+			Api.lua_dump(L, ChunkWriter, GCHandle.ToIntPtr(outputHandle), strip ? 1:0);
 			outputHandle.Free();
 
 			output.Flush();

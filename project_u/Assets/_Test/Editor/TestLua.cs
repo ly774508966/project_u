@@ -43,10 +43,11 @@ namespace lua.test
 			return new TestRetValue();
 		}
 
-		public int TestOutParam(int k, out int t1, out Vector3 t2)
+		public int TestOutParam(int k, out int t1, out Vector3 t2, ref int t3)
 		{
 			t1 = 11;
 			t2 = new Vector3(1, 2, 3);
+			t3 = t1 + t3;
 			return k+10;
 		}
 
@@ -509,27 +510,26 @@ namespace lua.test
 			var stackTop = Api.lua_gettop(L.luaState);
 			Api.luaL_dostring(L.luaState,
 				"function TestOutParam(obj)\n" +
-				"  ret, t1, t2 = obj:TestOutParam(10, nil, nil)\n" + 
-				"  return ret, t1, t2\n" +
+				"  ret, t1, t2, t3 = obj:TestOutParam(10, nil, nil, 10)\n" + 
+				"  return ret, t1, t2, t3\n" +
 				"end");
 
 			Api.lua_getglobal(L.luaState, "TestOutParam");
 			Lua.PushRef(L.luaState, objRef);
 			Lua.Call(L.luaState, 1, Api.LUA_MULTRET);
 
-			Assert.AreEqual(20.0, Api.lua_tonumber(L.luaState, -3));
-			Assert.AreEqual(11.0, Api.lua_tonumber(L.luaState, -2));
-			var value = (Vector3)Lua.CsharpValueFrom(L.luaState, -1);
+			Assert.AreEqual(20.0, Api.lua_tonumber(L.luaState, -4));
+			Assert.AreEqual(11.0, Api.lua_tonumber(L.luaState, -3));
+			var value = (Vector3)Lua.CsharpValueFrom(L.luaState, -2);
 			Assert.AreEqual(1f, value.x);
 			Assert.AreEqual(2f, value.y);
 			Assert.AreEqual(3f, value.z);
-			Api.lua_pop(L.luaState, 3);
+			// t3 =	t1 + t3
+			Assert.AreEqual(21.0, Api.lua_tonumber(L.luaState, -1));
+			Api.lua_pop(L.luaState, 4);
 
 			Assert.AreEqual(stackTop, Api.lua_gettop(L.luaState));
 		}
-
-
-
 
 	}
 }

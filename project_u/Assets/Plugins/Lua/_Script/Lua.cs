@@ -256,6 +256,10 @@ namespace lua
 			}
 
 			var type = arg.ParameterType;
+			if (type.IsByRef)
+			{
+				type = type.GetElementType(); // strip byref
+			}
 			switch (luaType)
 			{
 				case Api.LUA_TNUMBER:
@@ -330,6 +334,10 @@ namespace lua
 						var nvalue = Api.lua_tonumber(L, i);
 						try
 						{
+							if (type.IsByRef)
+							{
+								type = type.GetElementType();
+							}
 							var converted = System.Convert.ChangeType(nvalue, type);
 							actualArgs[idx] = converted;
 						}
@@ -553,16 +561,16 @@ namespace lua
 			{
 				var actualArgs = CsharpArgsFrom(L, parameters, argStart, numArgs);
 				var retVal = method.Invoke(target, actualArgs);
-				// TODO: multi-ret (ref value, out value)
 				int outValues = 0;
 				if (retVal != null)
 				{
 					PushCsharpValue(L, retVal);
 					++outValues;
 				}
+				// out and ref parameters
 				for (int i = 0; i < parameters.Length; ++i)
 				{
-					if (parameters[i].IsOut)
+					if (parameters[i].IsOut || parameters[i].ParameterType.IsByRef)
 					{
 						PushCsharpValue(L, actualArgs[i]);
 						++outValues;

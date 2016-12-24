@@ -59,12 +59,15 @@ namespace lua
 
 		void Reload()
 		{
+			var lb = target as LuaBehaviour;
+			if (string.IsNullOrEmpty(lb.scriptName))
+				return;
+
 			initChunkLoadFailed = false;
 			reason = string.Empty;
 
 			var L = lua.luaState;
 
-			var lb = target as LuaBehaviour;
 
 			// load from script
 			Api.lua_pushcclosure(L, Lua.LoadScript, 0);
@@ -310,13 +313,20 @@ namespace lua
 
 		public override void OnInspectorGUI()
 		{
-			base.OnInspectorGUI();
-
-
-
 			errorTextFieldStyle = new GUIStyle(EditorStyles.textField);
 			errorTextFieldStyle.normal.textColor = Color.red;
 			normalTextFieldStyle = new GUIStyle(EditorStyles.textField);
+
+			var lb = target as LuaBehaviour;
+
+			EditorGUI.BeginChangeCheck();
+			lb.scriptName = EditorGUILayout.TextField("script", lb.scriptName);
+			if (EditorGUI.EndChangeCheck())
+			{
+				Reload();
+				serializedObject.Update();
+			}
+
 
 			OnInspectorGUI_CheckReimported();
 			OnInspectorGUI_GameObjectMap();
@@ -327,19 +337,22 @@ namespace lua
 				EditorGUILayout.HelpBox ("_Init function error: " + reason, MessageType.Error);
 			}
 
-			var lb = target as LuaBehaviour;
+	
 	
 
 			EditorGUILayout.Separator();
 			EditorGUILayout.LabelField("Init Values");
-			EditorGUILayout.HelpBox("Init values are set in Script._Init function, and can be deserialized from asset.", MessageType.Info);
+			EditorGUILayout.HelpBox(string.Format("Init values can be specified in _Init function of script {0}.lua.", lb.scriptName), MessageType.Info);
 
-			if (GUILayout.Button("Reset"))
+			if (lb.IsInitFuncDumped())
 			{
-				// reset original _Init function defined in script
-				Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
-				lb.SetInitChunk(string.Empty);
-				Reload();
+				if (GUILayout.Button("Reset"))
+				{
+					// reset original _Init function defined in script
+					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
+					lb.SetInitChunk(string.Empty);
+					Reload();
+				}
 			}
 
 			if (initChunkLoadFailed) 
@@ -393,18 +406,21 @@ namespace lua
 				DumpInitValues();
 			}
 
-			// EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
-			EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk().Length + " bytes dumped.", MessageType.None);
-			editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
-			if (editSerializedChunk) 
+			if (lb.IsInitFuncDumped())
 			{
-				var original = lb.GetInitChunk();
-				var changed = EditorGUILayout.TextArea(original);
-				if (changed != lb.GetInitChunk())
+				// EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
+				EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk().Length + " bytes dumped.", MessageType.None);
+				editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
+				if (editSerializedChunk)
 				{
-					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
-					lb.SetInitChunk(changed.Trim());
-					Reload();
+					var original = lb.GetInitChunk();
+					var changed = EditorGUILayout.TextArea(original);
+					if (changed != lb.GetInitChunk())
+					{
+						Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
+						lb.SetInitChunk(changed.Trim());
+						Reload();
+					}
 				}
 			}
 		}

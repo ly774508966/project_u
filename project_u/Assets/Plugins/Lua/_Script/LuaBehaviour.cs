@@ -224,6 +224,29 @@ namespace lua
 			Lua.Unref(Lua.instance.luaState, handleToThis);
 		}
 
+		public void SendLuaMessage(string message)
+		{
+			if (!scriptLoaded) return;
+
+			var L = lua.Lua.instance.luaState;
+
+			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
+			{
+				Lua.PushRef(L, handleToThis);
+				Api.lua_pushvalue(L, -3);
+				try
+				{
+					Lua.Call(L, 2, 0);
+				}
+				catch (Exception e)
+				{
+					Debug.LogErrorFormat("Invoke {0}.{1} failed: {2}", scriptName, message, e.Message);	
+				}
+			}
+			Api.lua_pop(L, 1); // pop behaviour table
+		}
+
 		public void SendLuaMessage(Message message)
 		{
 			if (!scriptLoaded) return;
@@ -234,9 +257,9 @@ namespace lua
 
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// get message func	from instance table
-			Api.lua_rawgeti(L, -1, messageRef[(int)message]); // stack: func, instance table
-			if (Api.lua_isfunction(L, -1))
+			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
+				// stack: func, instance table
 				Lua.PushRef(L, handleToThis); // this csharp object
 				Api.lua_pushvalue(L, -3); // behaviour table
 				try

@@ -554,5 +554,56 @@ namespace lua.test
 			Assert.AreEqual(stackTop, Api.lua_gettop(L.luaState));
 		}
 
+
+		public class SomeClass
+		{
+			public int MeCallYou(lua.FuncTools.Func<int> complete)
+			{
+				return complete.Invoke();
+			}
+
+			public int MeCallYou2(lua.FuncTools.Func<int> complete)
+			{
+				return complete.Invoke("called in MeCallYou2");
+			}
+		}
+
+		[Test]
+		public void TestCallNativeFuncWithLuaCallback()
+		{
+			var stackTop = Api.lua_gettop(L.luaState);
+
+			var inst = new SomeClass();
+
+			Api.luaL_dostring(
+				L.luaState,
+				"function Test(obj)\n" +
+				" local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" +
+				" return obj:MeCallYou(function() \n" +
+				"     Debug.Log('being called')\n" +
+				"     return 10\n" +
+				"   end)\n" +
+				"end");
+			Api.lua_getglobal(L.luaState, "Test");
+			Lua.PushCsharpValue(L.luaState, inst);
+			Lua.Call(L.luaState, 1, 1);
+			Assert.AreEqual(10.0, Api.lua_tonumber(L.luaState, -1));
+
+			Api.lua_pop(L.luaState, 1);
+			Assert.AreEqual(stackTop, Api.lua_gettop(L.luaState));
+		}
+
+		[Test]
+		public void TestWrapperToLuaFuncToolsFunc()
+		{
+			var a = new SomeClass();
+			var val = a.MeCallYou2(lua.FuncTools.Wrap<string, int>(
+	   			(str) => {
+					Debug.Log(str);
+					return 10;
+				}));
+			Assert.AreEqual(10, val);
+		}
+
 	}
 }

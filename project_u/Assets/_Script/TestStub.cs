@@ -1,4 +1,4 @@
-/*
+﻿/*
 MIT License
 
 Copyright (c) 2016 xiaobin83
@@ -22,21 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 using UnityEngine;
+using System.Collections;
 
-namespace lua
-{
-	public class LuaInstanceBehaviour192 : LuaInstanceBehaviour0
-	{
+public class TestStub : MonoBehaviour {
 
-		void FixedUpdate()
-		{
-			luaBehaviour.SendLuaMessage(LuaBehaviour.Message.FixedUpdate);
-		}
-
-		void LateUpdate()
-		{
-			luaBehaviour.SendLuaMessage(LuaBehaviour.Message.LateUpdate);
-		}
-
+	// Use this for initialization
+	void Start () {
+		var btn = GetComponent<UnityEngine.UI.Button>();
+		btn.onClick.AddListener(
+			() => Debug.Log("Clicked From Csharp"));
+	}
+	
+	// Update is called once per frame
+	void Update () {
+	
 	}
 }

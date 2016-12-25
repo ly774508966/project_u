@@ -25,7 +25,7 @@ using UnityEngine;
 
 namespace lua
 {
-	public class LuaInstanceBehaviour : MonoBehaviour
+	public class LuaInstanceBehaviour0 : MonoBehaviour
 	{
 		protected LuaBehaviour luaBehaviour;
 		void SetLuaBehaviour(LuaBehaviour behaviour)

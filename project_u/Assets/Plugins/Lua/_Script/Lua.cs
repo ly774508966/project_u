@@ -75,12 +75,22 @@ namespace lua
 			return 1;
 		}
 
-		public static int LoadScript(IntPtr L)
+		public static string GetScriptPath(string scriptName)
 		{
-			var scriptName = Api.luaL_checkstring(L, 1);
 			var path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
 			path = System.IO.Path.Combine(path, scriptName);
 			path = path + ".lua";
+			if (System.IO.Path.DirectorySeparatorChar != '/')
+			{
+				path = path.Replace(System.IO.Path.DirectorySeparatorChar, '/');
+			}
+			return path;
+		}
+
+		public static int LoadScript(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			var path = GetScriptPath(scriptName);
 			Api.luaL_loadfile(L, path);
 			try
 			{
@@ -88,8 +98,9 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogError(e.Message);
-				Api.lua_pushnil(L);
+				ThrowLuaException(
+					L, 
+					string.Format("LoadScript \"{0}\" failed: {1}", scriptName, e.Message));
 			}
 			return 1;
 		}
@@ -147,14 +158,14 @@ namespace lua
 			output.Write(toWrite, 0, toWrite.Length);
 			return 0;
 		}
-		public static string DumpChunk(IntPtr L)
+		public static string DumpChunk(IntPtr L, bool strip = true)
 		{
 			if (!Api.lua_isfunction(L, -1))
 				return string.Empty;
 
 			var output = new System.IO.MemoryStream();
 			var outputHandle = GCHandle.Alloc(output);
-			Api.lua_dump(L, ChunkWriter, GCHandle.ToIntPtr(outputHandle), 0);
+			Api.lua_dump(L, ChunkWriter, GCHandle.ToIntPtr(outputHandle), strip ? 1:0);
 			outputHandle.Free();
 
 			output.Flush();
@@ -173,17 +184,20 @@ namespace lua
 		}
 
 		// [-0,	+1,	m]
-		static void PushCsharpObject(IntPtr L, object obj)
+		static int PushCsharpObject(IntPtr L, object obj, string metaTableName = "csharp_object_meta")
 		{
 			var handleToObj = GCHandle.Alloc(obj);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
 			var userdata = Api.lua_newuserdata(L, IntPtr.Size);
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
-			NewCsharpObjectMetatable(L);
+
+			var newMeta = NewCsharpObjectMetatable(L, metaTableName);
 			// stack: userdata, meta
 			Api.lua_setmetatable(L, -2);
 			// stack: userdata
+
+			return newMeta;
 		}
 
 		public static object ToCsharpObject(IntPtr L, int idx)
@@ -293,6 +307,8 @@ namespace lua
 					return (type == typeof(System.Boolean));
 				case Api.LUA_TLIGHTUSERDATA:
 					return (type == typeof(System.IntPtr) || type == typeof(System.UIntPtr));
+				case Api.LUA_TFUNCTION:
+					return typeof(lua.FuncTools.FuncBase).IsAssignableFrom(type);
 				case Api.LUA_TNIL:
 					if (arg.IsOut) // if is out, we can pass nil in
 					{
@@ -372,6 +388,11 @@ namespace lua
 					case Api.LUA_TUSERDATA:
 						actualArgs[idx] = ToCsharpObject(L, i);
 						break;
+					case Api.LUA_TFUNCTION:
+						Api.lua_pushvalue(L, i);
+						var methodObj = FuncTools.CreateFuncObject(type, L);
+						actualArgs[idx] = methodObj;
+						break;	
 					case Api.LUA_TNIL:
 						if (arg.IsOut)
 						{
@@ -610,7 +631,7 @@ namespace lua
 
 		static int MetaConstructFunction(IntPtr L)
 		{
-			var typeObj = ToCsharpObject(L, Api.lua_upvalueindex(1));
+			var typeObj = ToCsharpObject(L, 1);
 			Api.Assert(L, (typeObj != null) && (typeObj is System.Type), "Constructor needs type object.");
 
 			var numArgs = Api.lua_gettop(L);
@@ -695,28 +716,19 @@ namespace lua
 				Api.lua_pushnil(L);
 				return 1;
 			}
-			Api.lua_newtable(L); // class table
-			if (Api.luaL_newmetatable(L, type.AssemblyQualifiedName) == 1)
+
+			if (PushCsharpObject(L, type, type.AssemblyQualifiedName) == 1)
 			{
-				PushCsharpObject(L, type);
+				Api.lua_getmetatable(L, -1);
 
-				Api.lua_pushvalue(L, -1); // push type object
-				Api.lua_pushcclosure(L, MetaConstructFunction, 1);
-				Api.lua_setfield(L, -3, "__call");
+				Api.lua_pushboolean(L, true);
+				Api.lua_rawseti(L, -2, 0); // isClassObject = true
 
-				Api.lua_pushboolean(L, true); // isIndexingClassObject = true
-				Api.lua_pushvalue(L, -2); // push type object
-				Api.lua_pushcclosure(L, MetaIndexFunction, 2);
-				Api.lua_setfield(L, -3, "__index");
+				Api.lua_pushcclosure(L, MetaConstructFunction, 0);
+				Api.lua_setfield(L, -2, "__call");
 
-				Api.lua_pushboolean(L, true); // isIndexingClassObject = true
-				Api.lua_pushvalue(L, -2); // push type object
-				Api.lua_pushcclosure(L, MetaNewIndexFunction, 2);
-				Api.lua_setfield(L, -3, "__newindex");
-
-				Api.lua_pop(L, 1); // pop type object
+				Api.lua_pop(L, 1);
 			}
-			Api.lua_setmetatable(L, -2);
 			return 1;
 		}
 
@@ -806,14 +818,7 @@ namespace lua
 				{
 					bool isInvokingFromClass = (obj == null);
 					Api.lua_pushboolean(L, isInvokingFromClass);
-					if (isInvokingFromClass)
-					{
-						Api.lua_pushvalue(L, Api.lua_upvalueindex(2)); // should be at upvalue index 2
-					}
-					else
-					{
-						Api.lua_pushvalue(L, 1); // should be at index 1
-					}
+					Api.lua_pushvalue(L, 1); // should be at index 1
 					Api.lua_pushstring(L, memberName);
 					Api.lua_pushcclosure(L, InvokeMethod, 3);
 					return 1;
@@ -872,14 +877,27 @@ namespace lua
 		}
 
 
+		static bool IsIndexingClassObject(IntPtr L)
+		{
+			var isIndexingClassObject = false;
+			Api.lua_getmetatable(L, 1);
+			if (Api.lua_istable(L, -1))
+			{
+				Api.lua_rawgeti(L, -1, 0);
+				isIndexingClassObject = Api.lua_toboolean(L, -1);
+				Api.lua_pop(L, 2);
+			}
+			return isIndexingClassObject;
+		}
+
 		static int MetaIndexFunction(IntPtr L)
 		{
-			var isIndexingClassObject = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
+			var isIndexingClassObject = IsIndexingClassObject(L);
 
 			System.Type typeObject = null;
 			if (isIndexingClassObject)
 			{
-				typeObject = (System.Type)ToCsharpObject(L, Api.lua_upvalueindex(2));
+				typeObject = (System.Type)ToCsharpObject(L, 1);
 			}
 
 			object thisObject = null;
@@ -917,11 +935,12 @@ namespace lua
 
 		static int MetaNewIndexFunction(IntPtr L)
 		{
-			var isIndexingClassObject = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
+			var isIndexingClassObject = IsIndexingClassObject(L);
+
 			System.Type typeObject = null;
 			if (isIndexingClassObject)
 			{
-				typeObject = (System.Type)ToCsharpObject(L, Api.lua_upvalueindex(2));
+				typeObject = (System.Type)ToCsharpObject(L, 1);
 			}
 
 			object thisObject = null;
@@ -1032,16 +1051,17 @@ namespace lua
 		}
 
 		// [-0, +1, -]
-		static void NewCsharpObjectMetatable(IntPtr L)
+		static int NewCsharpObjectMetatable(IntPtr L, string metaTableName)
 		{
-			if (Api.luaL_newmetatable(L, "csharp_object_meta") == 1)
+			if (Api.luaL_newmetatable(L, metaTableName) == 1)
 			{
-				Api.lua_pushboolean(L, false); // isIndexingClassObject = false
-				Api.lua_pushcclosure(L, MetaIndexFunction, 1);
+				Api.lua_pushboolean(L, false);
+				Api.lua_rawseti(L, -2, 0); // isClassObject = false
+
+				Api.lua_pushcclosure(L, MetaIndexFunction, 0);
 				Api.lua_setfield(L, -2, "__index");
 
-				Api.lua_pushboolean(L, false); // isIndexingClassObject = true
-				Api.lua_pushcclosure(L, MetaNewIndexFunction, 1);
+				Api.lua_pushcclosure(L, MetaNewIndexFunction, 0);
 				Api.lua_setfield(L, -2, "__newindex");
 
 				Api.lua_pushcclosure(L, MetaToStringFunction, 0);
@@ -1049,7 +1069,10 @@ namespace lua
 
 				Api.lua_pushcclosure(L, MetaGcFunction, 0);
 				Api.lua_setfield(L, -2, "__gc");
+
+				return 1;
 			}
+			return 0;
 		}
 
 

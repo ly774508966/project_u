@@ -81,6 +81,10 @@ namespace comext.test
 			Assert.AreEqual(0x1122334455667788, longRet);
 		}
 
+		[Test]
+		public void SomeTest()
+		{
 
+		}
 	}
 }

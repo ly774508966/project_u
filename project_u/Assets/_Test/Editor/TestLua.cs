@@ -557,9 +557,9 @@ namespace lua.test
 
 		public class SomeClass
 		{
-			public int MeCallYou(System.Func<int> complete)
+			public int MeCallYou(lua.FuncTools.Func<int> complete)
 			{
-				return complete();
+				return complete.Invoke();
 			}
 		}
 
@@ -573,7 +573,8 @@ namespace lua.test
 			Api.luaL_dostring(
 				L.luaState,
 				"function Test(obj)\n" +
-				" obj:MeCallYou(function() \n" +
+				" local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" +
+				" return obj:MeCallYou(function() \n" +
 				"     Debug.Log('being called')\n" +
 				"     return 10\n" +
 				"   end)\n" +
@@ -583,6 +584,7 @@ namespace lua.test
 			Lua.Call(L.luaState, 1, 1);
 			Assert.AreEqual(10.0, Api.lua_tonumber(L.luaState, -1));
 
+			Api.lua_pop(L.luaState, 1);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L.luaState));
 		}
 

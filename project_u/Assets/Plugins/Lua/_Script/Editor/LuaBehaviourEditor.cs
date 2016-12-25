@@ -325,7 +325,7 @@ namespace lua
 			{
 				serializedObject.ApplyModifiedProperties();
 				Reload();
-				serializedObject.Update();
+ 				serializedObject.Update();
 			}
 
 

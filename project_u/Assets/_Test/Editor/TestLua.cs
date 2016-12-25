@@ -561,6 +561,11 @@ namespace lua.test
 			{
 				return complete.Invoke();
 			}
+
+			public int MeCallYou2(lua.FuncTools.Func<int> complete)
+			{
+				return complete.Invoke("called in MeCallYou2");
+			}
 		}
 
 		[Test]
@@ -586,6 +591,18 @@ namespace lua.test
 
 			Api.lua_pop(L.luaState, 1);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L.luaState));
+		}
+
+		[Test]
+		public void TestWrapperToLuaFuncToolsFunc()
+		{
+			var a = new SomeClass();
+			var val = a.MeCallYou2(lua.FuncTools.Wrap<string, int>(
+	   			(str) => {
+					Debug.Log(str);
+					return 10;
+				}));
+			Assert.AreEqual(10, val);
 		}
 
 	}

@@ -23,7 +23,6 @@ SOFTWARE.
 */
 using UnityEngine;
 using System.Collections;
-using System;
 
 namespace lua
 {
@@ -31,22 +30,27 @@ namespace lua
 	{
 		public class FuncBase
 		{
-			protected IntPtr L;
+			protected System.IntPtr L;
 			protected int funcRef;
 
-			protected FuncBase(IntPtr L)
+			protected FuncBase(System.IntPtr L)
 			{
 				this.L = L;
-				this.funcRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+				if (this.L != System.IntPtr.Zero)
+					this.funcRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
 			}
 
 			~FuncBase()
 			{
-				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, funcRef);
+				if (L != System.IntPtr.Zero)
+					Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, funcRef);
 			}
 
-			protected void Invoke(Type retType, object[] args)
+			protected void Invoke(System.Type retType, object[] args)
 			{
+				if (L == System.IntPtr.Zero)
+					return;
+					
 				if (Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, funcRef)
 					== Api.LUA_TFUNCTION)
 				{
@@ -64,18 +68,18 @@ namespace lua
 
 		public class Action : FuncBase
 		{
-			public Action(IntPtr L)
+			public Action(System.IntPtr L)
 				: base(L)
 			{
 			}
 
-			public void Invoke(params object[] args)
+			public virtual void Invoke(params object[] args)
 			{
 				try
 				{
 					base.Invoke(null, args);
 				}
-				catch (Exception e)
+				catch (System.Exception e)
 				{
 					Debug.LogError(e.Message);
 				}
@@ -86,19 +90,19 @@ namespace lua
 
 		public class Func<TRet> : FuncBase
 		{
-			public Func(IntPtr L)
+			public Func(System.IntPtr L)
 				: base(L)
 			{
 			}
 
-			public TRet Invoke(params object[] args)
+			public virtual TRet Invoke(params object[] args)
 			{
 				var retType = typeof(TRet);
 				try 
 				{
 					base.Invoke(retType, args);
 				}
-				catch (Exception e)
+				catch (System.Exception e)
 				{
 					Debug.LogError(e.Message);
 					return default(TRet);
@@ -108,9 +112,210 @@ namespace lua
 			}
 		}
 
+		class ActionWrapper : Action
+		{
+			System.Action action;
+
+			public ActionWrapper(System.Action action)
+				: base(System.IntPtr.Zero)
+			{
+				this.action = action;
+			}
+			public override void Invoke(params object[] args)
+			{
+				action();
+			}
+		}
+
+		class ActionWrapper<T1> : Action
+		{
+			System.Action<T1> action;
+
+			public ActionWrapper(System.Action<T1> action)
+				: base(System.IntPtr.Zero)
+			{
+				this.action = action;
+			}
+			public override void Invoke(params object[] args)
+			{
+				action((T1)args[0]);
+			}
+		}
+
+		class ActionWrapper<T1, T2> : Action
+		{
+			System.Action<T1, T2> action;
+
+			public ActionWrapper(System.Action<T1, T2> action)
+				: base(System.IntPtr.Zero)
+			{
+				this.action = action;
+			}
+			public override void Invoke(params object[] args)
+			{
+				action((T1)args[0], (T2)args[1]);
+			}
+		}
+
+		class ActionWrapper<T1, T2, T3> : Action
+		{
+			System.Action<T1, T2, T3> action;
+
+			public ActionWrapper(System.Action<T1, T2, T3> action)
+				: base(System.IntPtr.Zero)
+			{
+				this.action = action;
+			}
+			public override void Invoke(params object[] args)
+			{
+				action((T1)args[0], (T2)args[1], (T3)args[3]);
+			}
+		}
+
+		class ActionWrapper<T1, T2, T3, T4> : Action
+		{
+			System.Action<T1, T2, T3, T4> action;
+
+			public ActionWrapper(System.Action<T1, T2, T3, T4> action)
+				: base(System.IntPtr.Zero)
+			{
+				this.action = action;
+			}
+			public override void Invoke(params object[] args)
+			{
+				action((T1)args[0], (T2)args[1], (T3)args[2], (T4)args[3]);
+			}
+		}
+
+		public static Action Wrap(System.Action action)
+		{
+			return new ActionWrapper(action);
+		}
+
+		public static Action Wrap<T1>(System.Action<T1> action)
+		{
+			return new ActionWrapper<T1>(action);
+		}
+
+		public static Action Wrap<T1, T2>(System.Action<T1, T2> action)
+		{
+			return new ActionWrapper<T1, T2>(action);
+		}
+
+		public static Action Wrap<T1, T2, T3>(System.Action<T1, T2, T3> action)
+		{
+			return new ActionWrapper<T1, T2, T3>(action);
+		}
+
+		public static Action Wrap<T1, T2, T3, T4>(System.Action<T1, T2, T3, T4> action)
+		{
+			return new ActionWrapper<T1, T2, T3, T4>(action);
+		}
+
+
+		class FuncWrapper<TRet> : Func<TRet>
+		{
+			System.Func<TRet> func;
+
+			public FuncWrapper(System.Func<TRet> func)
+				: base(System.IntPtr.Zero)
+			{
+				this.func = func;
+			}
+			public override TRet Invoke(params object[] args)
+			{
+				return func();
+			}
+		}
+
+		class FuncWrapper<T1, TRet> : Func<TRet>
+		{
+			System.Func<T1, TRet> func;
+
+			public FuncWrapper(System.Func<T1, TRet> func)
+				: base(System.IntPtr.Zero)
+			{
+				this.func = func;
+			}
+			public override TRet Invoke(params object[] args)
+			{
+				return func((T1)args[0]);
+			}
+		}
+
+		class FuncWrapper<T1, T2, TRet> : Func<TRet>
+		{
+			System.Func<T1, T2, TRet> func;
+
+			public FuncWrapper(System.Func<T1, T2, TRet> func)
+				: base(System.IntPtr.Zero)
+			{
+				this.func = func;
+			}
+			public override TRet Invoke(params object[] args)
+			{
+				return func((T1)args[0], (T2)args[1]);
+			}
+		}
+
+		class FuncWrapper<T1, T2, T3, TRet> : Func<TRet>
+		{
+			System.Func<T1, T2, T3, TRet> func;
+
+			public FuncWrapper(System.Func<T1, T2, T3, TRet> func)
+				: base(System.IntPtr.Zero)
+			{
+				this.func = func;
+			}
+			public override TRet Invoke(params object[] args)
+			{
+				return func((T1)args[0], (T2)args[1], (T3)args[2] );
+			}
+		}
+
+		class FuncWrapper<T1, T2, T3, T4, TRet> : Func<TRet>
+		{
+			System.Func<T1, T2, T3, T4, TRet> func;
+
+			public FuncWrapper(System.Func<T1, T2, T3, T4, TRet> func)
+				: base(System.IntPtr.Zero)
+			{
+				this.func = func;
+			}
+			public override TRet Invoke(params object[] args)
+			{
+				return func((T1)args[0], (T2)args[1], (T3)args[2], (T4)args[3]);
+			}
+		}
+
+		public static Func<TRet> Wrap<TRet>(System.Func<TRet> func)
+		{
+			return new FuncWrapper<TRet>(func);
+		}
+
+		public static Func<TRet> Wrap<T1, TRet>(System.Func<T1, TRet> func)
+		{
+			return new FuncWrapper<T1, TRet>(func);
+		}
+
+		public static Func<TRet> Wrap<T1, T2, TRet>(System.Func<T1, T2, TRet> func)
+		{
+			return new FuncWrapper<T1, T2, TRet>(func);
+		}
+
+		public static Func<TRet> Wrap<T1, T2, T3, TRet>(System.Func<T1, T2, T3, TRet> func)
+		{
+			return new FuncWrapper<T1, T2, T3, TRet>(func);
+		}
+
+		public static Func<TRet> Wrap<T1, T2, T3, T4, TRet>(System.Func<T1, T2, T3, T4, TRet> func)
+		{
+			return new FuncWrapper<T1, T2, T3, T4, TRet>(func);
+		}
+
 
 		// create Lua func for invocation in C# [-1|0|-]
-		public static object CreateFuncObject(Type delegateType, IntPtr L)
+		public static object CreateFuncObject(System.Type delegateType, System.IntPtr L)
 		{
 			var ctors = delegateType.GetConstructors();
 			var c = ctors[0];

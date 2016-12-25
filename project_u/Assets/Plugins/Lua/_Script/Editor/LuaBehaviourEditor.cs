@@ -323,6 +323,7 @@ namespace lua
 			lb.scriptName = EditorGUILayout.TextField("script", lb.scriptName);
 			if (EditorGUI.EndChangeCheck())
 			{
+				serializedObject.ApplyModifiedProperties();
 				Reload();
 				serializedObject.Update();
 			}

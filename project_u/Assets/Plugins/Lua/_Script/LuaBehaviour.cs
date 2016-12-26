@@ -295,10 +295,10 @@ namespace lua
 
 		[SerializeField]
 		[HideInInspector]
-		string _Init;
+		byte[] _Init;
 		bool LoadInitFunc(IntPtr L)
 		{
-			if (string.IsNullOrEmpty(_Init)) return false;
+			if (_Init == null || _Init.Length == 0) return false;
 			try
 			{
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
@@ -337,15 +337,30 @@ namespace lua
 #if UNITY_EDITOR
 		public bool IsInitFuncDumped()
 		{
-			return !string.IsNullOrEmpty(scriptName) && !string.IsNullOrEmpty(_Init);
+			return !string.IsNullOrEmpty(scriptName) && _Init != null && _Init.Length > 0;
 		}
-		public string GetInitChunk()
+
+		public byte[] GetInitChunk()
 		{
 			return _Init;
 		}
-		public void SetInitChunk(string chunk)
+
+		public void SetInitChunk(byte[] chunk)
 		{
 			_Init = chunk;
+		}
+
+		public string GetInitChunkAsString()
+		{
+			return System.Convert.ToBase64String(_Init);
+		}
+
+		public void SetInitChunkByString(string base64Chunk)
+		{
+			if (!string.IsNullOrEmpty(base64Chunk))
+				SetInitChunk(System.Convert.FromBase64String(base64Chunk));
+			else
+				SetInitChunk(null);
 		}
 #endif
 	}

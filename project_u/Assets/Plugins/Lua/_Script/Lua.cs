@@ -104,11 +104,29 @@ namespace lua
 			return 1;
 		}
 
+
+
+
+		public delegate byte[] ScriptLoader(string scriptName);
+
+		public static ScriptLoader scriptLoader;
+
+		static ScriptLoader loadScriptFromFile
+		{
+			get
+			{
+				if (scriptLoader == null)
+					return DefaultScriptLoader;
+				return scriptLoader;
+			}
+		}
+
+
 		public static string GetScriptPath(string scriptName)
 		{
 			if (string.IsNullOrEmpty(scriptName)) return scriptName;
-
-			var path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
+			var path = "";
+			path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
 			path = System.IO.Path.Combine(path, scriptName);
 			path = path + ".lua";
 			if (System.IO.Path.DirectorySeparatorChar != '/')
@@ -118,20 +136,39 @@ namespace lua
 			return path;
 		}
 
+		static byte[] DefaultScriptLoader(string scriptName)
+		{
+			var path = GetScriptPath(scriptName);
+#if !UNITY_EDITOR && UNITY_ANDROID
+			var www = new WWW(path);
+#else
+			var www = new WWW("file:///" + path);
+#endif
+			while (!www.isDone);
+
+			if (!string.IsNullOrEmpty(www.error))
+			{
+				throw new Exception(www.error);
+			}
+
+			return www.bytes;
+		}
+
 		public static int LoadScript(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
-			var path = GetScriptPath(scriptName);
-			Api.luaL_loadfile(L, path);
+
 			try
 			{
+				var bytes = loadScriptFromFile(scriptName);
+				LoadChunk(L, bytes, scriptName, mode: "bt");
 				Call(L, 0, 1);
 			}
 			catch (Exception e)
 			{
 				ThrowLuaException(
 					L, 
-					string.Format("LoadScript \"{0}\" from {1} failed: {2}", scriptName, path, e.Message));
+					string.Format("LoadScript \"{0}\" failed: {1}", scriptName, e.Message));
 			}
 			return 1;
 		}
@@ -158,10 +195,10 @@ namespace lua
 			public int pos;
 		}
 
-		public static void LoadChunk(IntPtr L, string chunk, string chunkname, string mode = "b")
+		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "b")
 		{
 			var c = new Chunk();
-			c.bytes = GCHandle.Alloc(System.Convert.FromBase64String(chunk), GCHandleType.Pinned);
+			c.bytes = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 			c.pos = 0;
 			var handleToBinaryChunk = GCHandle.Alloc(c);
 			var ret = Api.lua_load(L, ChunkLoader, GCHandle.ToIntPtr(handleToBinaryChunk), chunkname, mode);
@@ -189,10 +226,10 @@ namespace lua
 			output.Write(toWrite, 0, toWrite.Length);
 			return 0;
 		}
-		public static string DumpChunk(IntPtr L, bool strip = true)
+		public static byte[] DumpChunk(IntPtr L, bool strip = true)
 		{
 			if (!Api.lua_isfunction(L, -1))
-				return string.Empty;
+				return null;
 
 			var output = new System.IO.MemoryStream();
 			var outputHandle = GCHandle.Alloc(output);
@@ -204,7 +241,7 @@ namespace lua
 
 			var bytes = new byte[output.Length];
 			output.Read(bytes, 0, bytes.Length);
-			return System.Convert.ToBase64String(bytes);
+			return bytes;
 
 		}
 

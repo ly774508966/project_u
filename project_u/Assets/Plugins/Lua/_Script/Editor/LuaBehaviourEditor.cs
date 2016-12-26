@@ -60,6 +60,16 @@ namespace lua
 		void Reload()
 		{
 			var lb = target as LuaBehaviour;
+			if (lb == null)
+			{
+				initChunkLoadFailed = true;
+				if (Application.isPlaying)
+					reason = "Unity is Playing";
+				else
+					reason = "Unknown";
+				return;
+			}
+
 			if (string.IsNullOrEmpty(lb.scriptName))
 				return;
 
@@ -94,7 +104,7 @@ namespace lua
 			if (luaType != Api.LUA_TFUNCTION)
 			{
 				Api.lua_pop(L, 1); // pop func
-				lb.SetInitChunk(string.Empty); // no _Init chunk anymore
+				lb.SetInitChunk(null); // no _Init chunk anymore
 				serializedObject.Update();
 				return;
 			}
@@ -363,7 +373,7 @@ namespace lua
 				{
 					// reset original _Init function defined in script
 					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
-					lb.SetInitChunk(string.Empty);
+					lb.SetInitChunk(null);
 					Reload();
 				}
 			}
@@ -426,12 +436,13 @@ namespace lua
 				editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
 				if (editSerializedChunk)
 				{
-					var original = lb.GetInitChunk();
+					var original = lb.GetInitChunkAsString();
+					EditorGUI.BeginChangeCheck();
 					var changed = EditorGUILayout.TextArea(original);
-					if (changed != lb.GetInitChunk())
+					if (EditorGUI.EndChangeCheck())
 					{
 						Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
-						lb.SetInitChunk(changed.Trim());
+						lb.SetInitChunkByString(changed);
 						Reload();
 					}
 				}

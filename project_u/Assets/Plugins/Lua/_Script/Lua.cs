@@ -53,9 +53,38 @@ namespace lua
 	{
 		public IntPtr luaState { get; private set; }
 
+		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
+		{
+			try
+			{
+				if (nsize == 0)
+				{
+					if (ptr != IntPtr.Zero)
+						Marshal.FreeHGlobal(ptr);
+					return IntPtr.Zero;
+				}
+				else
+				{
+					if (ptr != IntPtr.Zero)
+						return Marshal.ReAllocHGlobal(ptr, new IntPtr(nsize));
+					else
+						return Marshal.AllocHGlobal(new IntPtr(nsize));
+				}
+			}
+			catch (Exception e)
+			{
+				Debug.LogErrorFormat("Alloc nsize = {0} failed: {1}", nsize, e.Message);
+				throw e;
+			}
+		}
+
 		public Lua()
 		{
+#if ALLOC_FROM_CSHARP
+			luaState = Api.lua_newstate(Alloc, IntPtr.Zero);
+#else
 			luaState = Api.luaL_newstate();
+#endif
 			Api.luaL_openlibs(luaState);
 			Api.lua_atpanic(luaState, Panic);
 			Api.luaL_requiref(luaState, "csharp", OpenCsharpLib, 1);
@@ -75,11 +104,29 @@ namespace lua
 			return 1;
 		}
 
+
+
+
+		public delegate byte[] ScriptLoader(string scriptName);
+
+		public static ScriptLoader scriptLoader;
+
+		static ScriptLoader loadScriptFromFile
+		{
+			get
+			{
+				if (scriptLoader == null)
+					return DefaultScriptLoader;
+				return scriptLoader;
+			}
+		}
+
+
 		public static string GetScriptPath(string scriptName)
 		{
 			if (string.IsNullOrEmpty(scriptName)) return scriptName;
-
-			var path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
+			var path = "";
+			path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
 			path = System.IO.Path.Combine(path, scriptName);
 			path = path + ".lua";
 			if (System.IO.Path.DirectorySeparatorChar != '/')
@@ -89,13 +136,32 @@ namespace lua
 			return path;
 		}
 
+		static byte[] DefaultScriptLoader(string scriptName)
+		{
+			var path = GetScriptPath(scriptName);
+#if !UNITY_EDITOR && UNITY_ANDROID
+			var www = new WWW(path);
+#else
+			var www = new WWW("file:///" + path);
+#endif
+			while (!www.isDone);
+
+			if (!string.IsNullOrEmpty(www.error))
+			{
+				throw new Exception(www.error);
+			}
+
+			return www.bytes;
+		}
+
 		public static int LoadScript(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
-			var path = GetScriptPath(scriptName);
-			Api.luaL_loadfile(L, path);
+
 			try
 			{
+				var bytes = loadScriptFromFile(scriptName);
+				LoadChunk(L, bytes, scriptName, mode: "bt");
 				Call(L, 0, 1);
 			}
 			catch (Exception e)
@@ -107,7 +173,7 @@ namespace lua
 			return 1;
 		}
 
-		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out long size)
+		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out uint size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
 			var chunk = handleToBinaryChunk.Target as Chunk;
@@ -115,7 +181,7 @@ namespace lua
 			if (chunk.pos < bytes.Length)
 			{
 				var curPos = chunk.pos;
-				size = bytes.Length; // read all at once
+				size = (uint)bytes.Length; // read all at once
 				chunk.pos = bytes.Length;
 				return Marshal.UnsafeAddrOfPinnedArrayElement(bytes, curPos);
 			}
@@ -129,10 +195,10 @@ namespace lua
 			public int pos;
 		}
 
-		public static void LoadChunk(IntPtr L, string chunk, string chunkname, string mode = "b")
+		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "b")
 		{
 			var c = new Chunk();
-			c.bytes = GCHandle.Alloc(System.Convert.FromBase64String(chunk), GCHandleType.Pinned);
+			c.bytes = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 			c.pos = 0;
 			var handleToBinaryChunk = GCHandle.Alloc(c);
 			var ret = Api.lua_load(L, ChunkLoader, GCHandle.ToIntPtr(handleToBinaryChunk), chunkname, mode);
@@ -148,7 +214,7 @@ namespace lua
 			handleToBinaryChunk.Free();
 		}
 
-		static int ChunkWriter(IntPtr L, IntPtr p, long sz, IntPtr ud)
+		static int ChunkWriter(IntPtr L, IntPtr p, uint sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
 			var output = handleToOutput.Target as System.IO.MemoryStream;
@@ -160,10 +226,10 @@ namespace lua
 			output.Write(toWrite, 0, toWrite.Length);
 			return 0;
 		}
-		public static string DumpChunk(IntPtr L, bool strip = true)
+		public static byte[] DumpChunk(IntPtr L, bool strip = true)
 		{
 			if (!Api.lua_isfunction(L, -1))
-				return string.Empty;
+				return null;
 
 			var output = new System.IO.MemoryStream();
 			var outputHandle = GCHandle.Alloc(output);
@@ -175,7 +241,7 @@ namespace lua
 
 			var bytes = new byte[output.Length];
 			output.Read(bytes, 0, bytes.Length);
-			return System.Convert.ToBase64String(bytes);
+			return bytes;
 
 		}
 
@@ -190,7 +256,7 @@ namespace lua
 		{
 			var handleToObj = GCHandle.Alloc(obj);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
-			var userdata = Api.lua_newuserdata(L, IntPtr.Size);
+			var userdata = Api.lua_newuserdata(L, (uint)IntPtr.Size);
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
 
@@ -198,7 +264,6 @@ namespace lua
 			// stack: userdata, meta
 			Api.lua_setmetatable(L, -2);
 			// stack: userdata
-
 			return newMeta;
 		}
 
@@ -218,7 +283,8 @@ namespace lua
 			var type = obj.GetType();
 			Debug.Assert(type.IsClass);
 			PushCsharpObject(L, obj);
-			return Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+			var refVal = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+			return refVal;
 		}
 
 		public static void PushRef(IntPtr L, object objReference)
@@ -320,7 +386,7 @@ namespace lua
 				case Api.LUA_TNONE:
 					return (type == typeof(object));
 			}
-			Debug.LogWarningFormat("Argument type {0} is not supported", Api.Typename(luaType));
+			Debug.LogWarningFormat("Argument type {0} is not supported", Api.ttypename(luaType));
 			return false;
 		}
 
@@ -404,7 +470,7 @@ namespace lua
 					default:
 						if (type != typeof(string) && type != typeof(System.Object))
 						{
-							Debug.LogWarningFormat("Convert lua type {0} to string, wanted to fit {1}", Api.Typename(luaType), type.ToString());
+							Debug.LogWarningFormat("Convert lua type {0} to string, wanted to fit {1}", Api.ttypename(luaType), type.ToString());
 						}
 						actualArgs[idx] = Api.lua_tostring(L, i);
 						break;
@@ -425,7 +491,7 @@ namespace lua
 			{
 				for (var i = 0; i < args.Length; ++i)
 				{
-					sb.Append(Api.Typename(args[i]));
+					sb.Append(Api.ttypename(args[i]));
 					if (i < args.Length - 1)
 					{
 						sb.Append(",");
@@ -1057,6 +1123,7 @@ namespace lua
 		{
 			if (Api.luaL_newmetatable(L, metaTableName) == 1)
 			{
+				Debug.LogFormat("Registering object meta table {0} ... ", metaTableName);
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 0); // isClassObject = false
 

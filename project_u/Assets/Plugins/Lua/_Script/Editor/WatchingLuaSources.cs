@@ -45,6 +45,8 @@ namespace lua
 
 		public static bool IsReimported(string path)
 		{
+			if (string.IsNullOrEmpty(path)) return false;
+
 			var rootPath = new System.Uri(Application.dataPath);
 			var scriptPath = new System.Uri(path);
 			var relativeUri = rootPath.MakeRelativeUri(scriptPath);
@@ -58,6 +60,8 @@ namespace lua
 
 		public static void SetProcessed(string path)
 		{
+			if (string.IsNullOrEmpty(path)) return;
+
 			if (luaSourceStatus.ContainsKey(path))
 			{
 				luaSourceStatus[path] = Status.Ok;

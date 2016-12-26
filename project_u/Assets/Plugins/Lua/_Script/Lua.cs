@@ -77,6 +77,8 @@ namespace lua
 
 		public static string GetScriptPath(string scriptName)
 		{
+			if (string.IsNullOrEmpty(scriptName)) return scriptName;
+
 			var path = System.IO.Path.Combine(Application.streamingAssetsPath, "LuaRoot");
 			path = System.IO.Path.Combine(path, scriptName);
 			path = path + ".lua";

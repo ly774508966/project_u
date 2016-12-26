@@ -82,6 +82,12 @@ namespace lua
 				reason = e.Message;	
 				return;
 			}
+			if (!Api.lua_istable(L, -1))
+			{
+				initChunkLoadFailed = true;
+				reason = string.Format("Needs behaviour table returned from {0}.lua", lb.scriptName);
+				return;
+			}
 
 			var luaType = Api.lua_getfield(L, -1, "_Init");
 			Api.lua_remove(L, -2); // keep _Init, remove table
@@ -327,6 +333,12 @@ namespace lua
 				Reload();
  				serializedObject.Update();
 			}
+			if (string.IsNullOrEmpty(lb.scriptName))
+			{
+				EditorGUILayout.HelpBox("Please specify a script.", MessageType.Error);
+				return;
+			}
+
 
 
 			OnInspectorGUI_CheckReimported();

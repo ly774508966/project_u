@@ -73,6 +73,25 @@ namespace lua
 
 	public class LuaBehaviour : MonoBehaviour
 	{
+		static Lua lua_;
+		static IntPtr luaState
+		{
+			get
+			{
+				if (lua_ == null)
+				{
+					lua_ = new Lua();
+				}
+				return lua_.luaState;
+			}
+		}
+
+		public static void SetLua(Lua luaVm)
+		{
+			lua_ = luaVm;
+		}
+
+
 		public string scriptName;
 
 		[SerializeField]
@@ -118,7 +137,7 @@ namespace lua
 				Debug.LogWarning("LuaBehaviour with empty scriptName.");
 				return;
 			}
-			var L = lua.Lua.instance.luaState;
+			var L = luaState;
 
 			// make	instance
 			handleToThis = Lua.MakeRef(L, this);
@@ -220,15 +239,15 @@ namespace lua
 		{
 			SendLuaMessage(Message.OnDestroy);
 
-			Api.luaL_unref(Lua.instance.luaState, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-			Lua.Unref(Lua.instance.luaState, handleToThis);
+			Api.luaL_unref(luaState, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+			Lua.Unref(luaState, handleToThis);
 		}
 
 		public void SendLuaMessage(string message)
 		{
 			if (!scriptLoaded) return;
 
-			var L = lua.Lua.instance.luaState;
+			var L = luaState;
 
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
@@ -253,7 +272,7 @@ namespace lua
 
 			if ((messageFlag & MakeFlag(message)) == 0) return; // no message defined
 
-			var L = lua.Lua.instance.luaState;
+			var L = luaState;
 
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// get message func	from instance table

@@ -49,7 +49,7 @@ namespace lua
 		}
 	}
 
-	public class Lua : comext.utils.Singleton<Lua> 
+	public class Lua
 	{
 		public IntPtr luaState { get; private set; }
 

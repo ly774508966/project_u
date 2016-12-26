@@ -28,9 +28,13 @@ namespace lua
 {
 	public class Api
 	{
-
+#if UNITY_EDITOR
 		public const string LIBNAME = "lua";
-
+#elif UNITY_ANDROID
+		public const string LIBNAME = "liblua";
+#elif UNITY_IPHONE
+		public const string LIBNAME = "__internal";
+#endif
 
 		public static bool is64Bit
 		{

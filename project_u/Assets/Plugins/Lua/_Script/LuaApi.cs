@@ -28,40 +28,27 @@ namespace lua
 {
 	public class Api
 	{
-#if UNITY_EDITOR
+#if UNITY_EDITOR || UNITY_ANDROID
 		public const string LIBNAME = "lua";
-#elif UNITY_ANDROID
-		public const string LIBNAME = "liblua";
 #elif UNITY_IPHONE
-		public const string LIBNAME = "__internal";
+		public const string LIBNAME = "__Internal";
 #endif
-
-		public static bool is64Bit
-		{
-			get
-			{
-				return (IntPtr.Size == 8);
-			}
-		}
-
-		public static int LUAI_MAXSTACK
-		{
-			get
-			{
-				if (is64Bit)
-					return 1000000;
-				return 15000;
-			}
-		}
 
 		public const int LUA_MULTRET = -1;
 
 		/*
 		** Pseudo-indices
-		** (-LUAI_MAXSTACK is the minimum valid	index; we keep some	free empty
-		** space after that	to help	overflow detection)
 		*/
-		public static int LUA_REGISTRYINDEX = (-LUAI_MAXSTACK - 1000);
+		[DllImport(LIBNAME)]
+		static extern int lua_const_LUA_REGISTRYINDEX();
+
+		public static int LUA_REGISTRYINDEX
+		{
+			get
+			{
+				return lua_const_LUA_REGISTRYINDEX();
+			}
+		}
 		public static int lua_upvalueindex(int i)
 		{
 			return LUA_REGISTRYINDEX - i;
@@ -98,12 +85,15 @@ namespace lua
 		/*
 		** Type	for	functions that read/write blocks when loading/dumping Lua chunks
 		*/
-		public delegate IntPtr lua_Reader(IntPtr L, IntPtr ud, out long sz);
-		public delegate int lua_Writer(IntPtr L, IntPtr p, long sz, IntPtr ud);
+		public delegate IntPtr lua_Reader(IntPtr L, IntPtr ud, out uint sz);
+		public delegate int lua_Writer(IntPtr L, IntPtr p, uint sz, IntPtr ud);
+		public delegate IntPtr lua_Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize);
 
 		/*
 		** state manipulation
 		*/
+		[DllImport(LIBNAME)]
+		public static extern IntPtr lua_newstate(lua_Alloc f, IntPtr ud);
 		[DllImport(LIBNAME)]
 		public static extern void lua_close(IntPtr L);
 		[DllImport(LIBNAME)]
@@ -216,16 +206,8 @@ namespace lua
 			return null;
 		}
 
-		/*
-		public static extern size_t          (lua_rawlen) (IntPtr L, int idx);
-		public static extern lua_CFunction   (lua_tocfunction) (IntPtr L, int idx);
-*/
 		[DllImport(LIBNAME)]
 		public static extern IntPtr lua_touserdata(IntPtr L, int idx);
-		/*
-		public static extern lua_State		*(lua_tothread)	(IntPtr	L, int idx);
-		public static extern const void		*(lua_topointer) (IntPtr L,	int	idx);
-		*/
 
 
 		public const int LUA_OPEQ = 0;
@@ -299,7 +281,7 @@ namespace lua
 		[DllImport(LIBNAME)]
 		public static extern void lua_createtable(IntPtr L, int narr, int nrec);
 		[DllImport(LIBNAME)]
-		public static extern IntPtr lua_newuserdata(IntPtr L, long sz);
+		public static extern IntPtr lua_newuserdata(IntPtr L, uint sz);
 		[DllImport(LIBNAME)]
 		public static extern int lua_getmetatable(IntPtr L, int objindex);
 		[DllImport(LIBNAME)]
@@ -316,11 +298,11 @@ namespace lua
 		[DllImport(LIBNAME)]
 		public static extern void lua_setfield(IntPtr L, int idx, string k);
 		[DllImport(LIBNAME)]
-		public static extern void lua_seti(IntPtr L, int idx, long n);
+		public static extern void lua_seti(IntPtr L, int idx, int n);
 		[DllImport(LIBNAME)]
 		public static extern void lua_rawset(IntPtr L, int idx);
 		[DllImport(LIBNAME)]
-		public static extern void lua_rawseti(IntPtr L, int idx, long n);
+		public static extern void lua_rawseti(IntPtr L, int idx, int n);
 		[DllImport(LIBNAME)]
 		public static extern void lua_rawsetp(IntPtr L, int idx, IntPtr p);
 		[DllImport(LIBNAME)]
@@ -563,20 +545,14 @@ namespace lua
 			}
 		}
 
-		const string udatatypename = "userdata";
-		static readonly string[] luaT_typenames_ = new string [] {
-			"no_value",
-			"nil", "boolean", udatatypename, "number",
-			"string", "table", "function", udatatypename, "thread",
-			"proto" /* this last case is used for tests only */
-		};
-		public static string Typename(int type)
+		[DllImport(LIBNAME)]
+		static extern IntPtr lua_const_ttypename(int type);
+		public static string ttypename(int type)
 		{
-			if (type < luaT_typenames_.Length)
-			{
-				return luaT_typenames_[type + 1];
-			}
-			return "invalid_type_" + type;
+			var strPtr = lua_const_ttypename(type);
+			if (strPtr != IntPtr.Zero)
+				return Marshal.PtrToStringAnsi(strPtr);
+			return "invalid_type_bad_ttypename";
 		}
 
 

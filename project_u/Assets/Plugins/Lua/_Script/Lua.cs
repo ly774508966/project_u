@@ -25,7 +25,8 @@ SOFTWARE.
 using UnityEngine;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Text;
+using AOT;
+
 
 namespace lua
 {
@@ -53,6 +54,7 @@ namespace lua
 	{
 		public IntPtr luaState { get; private set; }
 
+		[MonoPInvokeCallback(typeof(Api.lua_Alloc))]
 		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
 		{
 			try
@@ -94,6 +96,7 @@ namespace lua
 			Api.lua_close(luaState);
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int OpenCsharpLib(IntPtr L)
 		{
 			var regs = new Api.luaL_Reg[]
@@ -154,6 +157,7 @@ namespace lua
 			return www.bytes;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		public static int LoadScript(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
@@ -173,6 +177,7 @@ namespace lua
 			return 1;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
 		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out uint size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
@@ -214,6 +219,7 @@ namespace lua
 			handleToBinaryChunk.Free();
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
 		static int ChunkWriter(IntPtr L, IntPtr p, uint sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
@@ -226,6 +232,7 @@ namespace lua
 			output.Write(toWrite, 0, toWrite.Length);
 			return 0;
 		}
+
 		public static byte[] DumpChunk(IntPtr L, bool strip = true)
 		{
 			if (!Api.lua_isfunction(L, -1))
@@ -245,6 +252,7 @@ namespace lua
 
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int Panic(IntPtr L)
 		{
 			Api.luaL_traceback(L, L, Api.lua_tostring(L, -1), 1);
@@ -578,7 +586,7 @@ namespace lua
 
 
 
-
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int InvokeMethod(IntPtr L)
 		{
 			var isInvokingFromClass = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
@@ -697,6 +705,7 @@ namespace lua
 			return 0;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaConstructFunction(IntPtr L)
 		{
 			var typeObj = ToCsharpObject(L, 1);
@@ -775,6 +784,7 @@ namespace lua
 			return true;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int Import(IntPtr L)
 		{
 			var typename = Api.luaL_checkstring(L, 1);
@@ -958,6 +968,7 @@ namespace lua
 			return isIndexingClassObject;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaIndexFunction(IntPtr L)
 		{
 			var isIndexingClassObject = IsIndexingClassObject(L);
@@ -1000,7 +1011,7 @@ namespace lua
 			}
 		}
 
-
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaNewIndexFunction(IntPtr L)
 		{
 			var isIndexingClassObject = IsIndexingClassObject(L);
@@ -1102,6 +1113,7 @@ namespace lua
 			}
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaToStringFunction(IntPtr L)
 		{
 			var thisObject = CsharpValueFrom(L, 1);
@@ -1109,6 +1121,7 @@ namespace lua
 			return 1;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaGcFunction(IntPtr L)
 		{
 			var userdata = Api.lua_touserdata(L, 1);
@@ -1146,6 +1159,7 @@ namespace lua
 
 
 		// Invoking Lua Function
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int HandleLuaFunctionInvokingError(IntPtr L)
 		{
 			var err = Api.lua_tostring(L, -1);

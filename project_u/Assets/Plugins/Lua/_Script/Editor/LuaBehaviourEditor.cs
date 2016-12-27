@@ -34,6 +34,7 @@ namespace lua
 
 		static Lua L = new Lua();
 
+		bool noInitFunc = false;
 		bool initChunkLoadFailed = false;
 		string reason;
 
@@ -87,15 +88,16 @@ namespace lua
 			if (string.IsNullOrEmpty(lb.scriptName))
 				return;
 
+			noInitFunc = false;
 			initChunkLoadFailed = false;
 			reason = string.Empty;
 
 			// load from script
-			Api.lua_pushcclosure(L, Lua.LoadScript, 0);
+			Api.lua_pushcclosure(L, Lua.LoadScript2, 0);
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{
-				Lua.Call(L, 1, 1);
+				Lua.Call(L, 1, 2);
 			}
 			catch (Exception e)
 			{
@@ -103,19 +105,37 @@ namespace lua
 				reason = e.Message;	
 				return;
 			}
-			if (!Api.lua_istable(L, -1))
+
+			// stack: table, scriptPath
+
+			if (!Api.lua_istable(L, -2))
 			{
 				initChunkLoadFailed = true;
 				reason = string.Format("Needs behaviour table returned from {0}.lua", lb.scriptName);
 				return;
 			}
 
+			if (!Api.lua_isstring(L, -1))
+			{
+				initChunkLoadFailed = true;
+				reason = "Internal error. Lua.LoadScript2 should return behaviour table and loaded path.";
+				return;
+			}
+
+			lb.scriptPath = Api.lua_tostring(L, -1);
+			Api.lua_pop(L, 1);
+
+			// stack: table
+
 			var luaType = Api.lua_getfield(L, -1, "_Init");
 			Api.lua_remove(L, -2); // keep _Init, remove table
 			if (luaType != Api.LUA_TFUNCTION)
 			{
+				noInitFunc = true;
 				Api.lua_pop(L, 1); // pop func
 				lb.SetInitChunk(null); // no _Init chunk anymore
+				keys = null;
+				values = null;
 				serializedObject.Update();
 				return;
 			}
@@ -241,7 +261,6 @@ namespace lua
 		void HandleUndoRedo()
 		{
 			var groupName = Undo.GetCurrentGroupName();
-			// Debug.Log(groupName);
 			if (!string.IsNullOrEmpty(groupName) && groupName.StartsWith("LuaBehaviour."))
 			{
 				Reload();
@@ -266,11 +285,10 @@ namespace lua
 		void OnInspectorGUI_CheckReimported()
 		{
 			var lb = target as LuaBehaviour;
-			var path = Lua.GetScriptPath(lb.scriptName);
-			if (WatchingLuaSources.IsReimported(path))
+			if (WatchingLuaSources.IsReimported(lb.scriptPath))
 			{
 				Reload();
-				WatchingLuaSources.SetProcessed(path);
+				WatchingLuaSources.SetProcessed(lb.scriptPath);
 			}
 		}
 
@@ -370,17 +388,20 @@ namespace lua
 			if (initChunkLoadFailed) 
 			{
 				EditorGUILayout.HelpBox("_Init function error: " + reason, MessageType.Error);
-				EditorGUILayout.TextArea(GetInitChunkAsString(lb));
+				if (lb.IsInitFuncDumped())
+				{
+					EditorGUILayout.HelpBox("Check both functions in script and serialized below:", MessageType.Info);
+					EditorGUILayout.TextArea(GetInitChunkAsString(lb));
+				}
 			}
 
 
 			EditorGUILayout.Separator();
-			EditorGUILayout.LabelField("Init Values");
-			EditorGUILayout.HelpBox(string.Format("Init values can be specified in _Init function of script {0}.lua.", lb.scriptName), MessageType.Info);
-
-			if (lb.IsInitFuncDumped())
+			EditorGUILayout.BeginHorizontal();
+			EditorGUILayout.LabelField("Init Values:");
+			if (GUILayout.Button("Reset"))
 			{
-				if (GUILayout.Button("Reset"))
+				if (lb.IsInitFuncDumped())
 				{
 					// reset original _Init function defined in script
 					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
@@ -388,6 +409,10 @@ namespace lua
 					Reload();
 				}
 			}
+			EditorGUILayout.EndHorizontal();
+			if (noInitFunc)
+				EditorGUILayout.HelpBox(string.Format("Init values can be specified in _Init function of script {0}.lua.", lb.scriptName), MessageType.Info);
+
 
 			if (initChunkLoadFailed) 
 				return;
@@ -442,7 +467,6 @@ namespace lua
 
 			if (lb.IsInitFuncDumped())
 			{
-				// EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk(), MessageType.None);
 				EditorGUILayout.HelpBox("Serialized: " + lb.GetInitChunk().Length + " bytes dumped.", MessageType.None);
 				editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
 				if (editSerializedChunk)

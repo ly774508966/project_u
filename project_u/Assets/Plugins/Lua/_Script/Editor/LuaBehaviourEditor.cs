@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEditor;
 using System;
 using System.Collections.Generic;
@@ -56,6 +56,20 @@ namespace lua
 			"  end\n" +
 			"  return merged\n" +
 			"end\n";
+
+
+		static void SetInitChunkByString(LuaBehaviour lb, string chunk)
+		{
+			lb.SetInitChunk(System.Text.Encoding.UTF8.GetBytes(chunk));
+		}
+
+		static string GetInitChunkAsString(LuaBehaviour lb)
+		{
+			var bytes = lb.GetInitChunk();
+			if (bytes == null || bytes.Length == 0)
+				return string.Empty;
+			return System.Text.Encoding.UTF8.GetString(bytes);
+		}
 
 		void Reload()
 		{
@@ -133,14 +147,15 @@ namespace lua
 			if (lb.IsInitFuncDumped())
 			{
 				Api.lua_newtable(L); // new table for loading valued from dumpped _Init function
-
-				Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
-				// stack: table, func
-				Api.lua_pushvalue(L, -2);
-				// stack: table, func, table
-
+				// stack: table
 				try
 				{
+					Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
+					// stack: table, loaded chunk (emits _Init function)
+					Lua.Call(L, 0, 1); // run loaded chunk
+					// stack: table, func
+					Api.lua_pushvalue(L, -2);
+					// stack: table, func, table
 					Lua.Call(L, 1, 0);
 				}
 				catch (Exception e)
@@ -357,11 +372,10 @@ namespace lua
 
 			if (initChunkLoadFailed) 
 			{
-				EditorGUILayout.HelpBox ("_Init function error: " + reason, MessageType.Error);
+				EditorGUILayout.HelpBox("_Init function error: " + reason, MessageType.Error);
+				EditorGUILayout.TextArea(GetInitChunkAsString(lb));
 			}
 
-	
-	
 
 			EditorGUILayout.Separator();
 			EditorGUILayout.LabelField("Init Values");
@@ -436,13 +450,13 @@ namespace lua
 				editSerializedChunk = EditorGUILayout.Toggle("Edit Serialized Chunk", editSerializedChunk);
 				if (editSerializedChunk)
 				{
-					var original = lb.GetInitChunkAsString();
+					var original = GetInitChunkAsString(lb);
 					EditorGUI.BeginChangeCheck();
 					var changed = EditorGUILayout.TextArea(original);
 					if (EditorGUI.EndChangeCheck())
 					{
 						Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
-						lb.SetInitChunkByString(changed);
+						SetInitChunkByString(lb, changed);
 						Reload();
 					}
 				}
@@ -459,7 +473,7 @@ namespace lua
 		{
 			Debug.Assert(keys != null);
 			var sb = new System.Text.StringBuilder();
-			sb.AppendLine("function _Init(instance)");
+			sb.AppendLine("return function (i)");
 			var importedTypes = new Dictionary<Type, Pair<string, string>>();
 			for (int i = 0; i < keys.Count; ++i)
 			{
@@ -475,7 +489,7 @@ namespace lua
 						sb.AppendLine(literials.p0);
 					}
 				}
-				sb.AppendLine(string.Format("instance.{0} = {1}", key, GetLuaValueLiterial(literials.p1, value)));
+				sb.AppendLine(string.Format("\ti.{0} = {1}", key, GetLuaValueLiterial(literials.p1, value)));
 			}
 			sb.AppendLine("end");
 
@@ -484,14 +498,10 @@ namespace lua
 
 			try
 			{
-				Api.luaL_dostring(lua.luaState, chunk);
-				Api.lua_getglobal(lua.luaState, "_Init");
-				var dumped = Lua.DumpChunk(lua.luaState);
 				var lb = target as LuaBehaviour;
 				Undo.RecordObject(lb, "LuaBehaviour.ChangeInitValues");
-				lb.SetInitChunk(dumped);
+				SetInitChunkByString(lb, chunk);
 				serializedObject.Update();
-				Api.lua_pop(lua.luaState, 1);
 			}
 			catch (Exception e)
 			{
@@ -510,7 +520,7 @@ namespace lua
 				if (type != typeof(string))
 				{
 					var typeLiteral = "_" + idx;
-					importLiteral = string.Format("local {0} = csharp.import('{1}')", typeLiteral, type.AssemblyQualifiedName);
+					importLiteral = string.Format("\tlocal {0} = csharp.import('{1}')", typeLiteral, type.AssemblyQualifiedName);
 					typeConstructionLiteral = typeLiteral;
 				}
 			}

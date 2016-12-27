@@ -101,7 +101,7 @@ namespace lua
 		[HideInInspector]
 		GameObject[] gameObjects;
 
-		MonoBehaviour instanceBehaviour;
+		LuaInstanceBehaviour0 instanceBehaviour;
 
 		public enum Message
 		{
@@ -148,39 +148,18 @@ namespace lua
 			Api.lua_pushvalue(L, -1);
 			luaBehaviourRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
 
-			// load	_Init from serialized version
-			LoadInitFunc(L);
-
+		
 			// meta
 			Api.lua_createtable(L, 0, 1);
 			// load	class
 			Api.luaL_requiref(L, scriptName, Lua.LoadScript, 0);
 
-			// Behaviour._Init hides Script._Init
-			Api.lua_getfield(L, -1, "_Init");
-			if (Api.lua_isfunction(L, -1))
-			{
-				Api.lua_pushvalue(L, -2);
-				try
-				{
-					Lua.Call(L, 1, 0);
-				}
-				catch (Exception e)
-				{
-					Debug.LogErrorFormat("{0}._Init failed: {1}.", scriptName, e.Message);
-				}
-			}
-			else
-			{
-				Api.lua_pop(L, 1); // pop non-function
-			}
-
-			if (Api.lua_istable(L, -1))
+			if (Api.lua_istable(L, -1)) // set metatable and bind messages
 			{
 				// stack: behaviour table, meta, script
 				Api.lua_setfield(L, -2, "__index"); // meta.__index = script
-				// stack: behaviour table, meta
-				Api.lua_setmetatable(L, -2); 
+													// stack: behaviour table, meta
+				Api.lua_setmetatable(L, -2);
 
 				// check message
 				for (Message i = Message.Awake; i < Message._Count; ++i)
@@ -200,19 +179,53 @@ namespace lua
 				// choose script
 				int flag = messageFlag & (MakeFlag(Message.Update) | MakeFlag(Message.FixedUpdate) | MakeFlag(Message.LateUpdate));
 				var componentType = Type.GetType("lua.LuaInstanceBehaviour" + flag.ToString());
-				instanceBehaviour = gameObject.AddComponent(componentType) as MonoBehaviour;
+				instanceBehaviour = gameObject.AddComponent(componentType) as LuaInstanceBehaviour0;
 
 				Api.lua_pop(L, 1); // pop behaviour table
 
-
 				scriptLoaded = true;
 
-				// Awake Lua script
-				instanceBehaviour.SendMessage("SetLuaBehaviour", this);
 			}
 			else
 			{
 				Api.lua_pop(L, 3); // pop behaviour table, meta and result of requiref
+			}
+
+
+			if (scriptLoaded)
+			{
+				// load	_Init from serialized version
+				LoadInitFunc(L);
+
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+
+				// Behaviour._Init hides Script._Init
+				Api.lua_getfield(L, -1, "_Init");
+				if (Api.lua_isfunction(L, -1))
+				{
+					Api.lua_pushvalue(L, -2);
+					try
+					{
+						Lua.Call(L, 1, 0);
+					}
+					catch (Exception e)
+					{
+						Debug.LogErrorFormat("{0}._Init failed: {1}.", scriptName, e.Message);
+					}
+				}
+				else
+				{
+					Api.lua_pop(L, 1); // pop non-function
+				}
+
+				Api.lua_pop(L, 1); // pop behaviour table
+
+				// Awake Lua script
+				instanceBehaviour.SetLuaBehaviour(this);
+			}
+			else
+			{
+				Debug.LogWarningFormat("No Lua script running with {0}.", gameObject.name);
 			}
 		}
 
@@ -238,9 +251,9 @@ namespace lua
 		void OnDestroy()
 		{
 			SendLuaMessage(Message.OnDestroy);
-
 			Api.luaL_unref(luaState, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-			Lua.Unref(luaState, handleToThis);
+			if (handleToThis != null)
+				Lua.Unref(luaState, handleToThis);
 		}
 
 		public void SendLuaMessage(string message)
@@ -302,9 +315,10 @@ namespace lua
 			try
 			{
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-				Lua.LoadChunk(L, _Init, scriptName+"_Init");
+				Lua.LoadChunk(L, _Init, scriptName + "_Init");
+				Lua.Call(L, 0, 1); // run loaded chunk
 				Api.lua_setfield(L, -2, "_Init");
-				Api.lua_pop(L, 1);
+				Api.lua_pop(L, 1);  // pop behaviour table
 				return true;
 			}
 			catch (Exception e)
@@ -348,19 +362,6 @@ namespace lua
 		public void SetInitChunk(byte[] chunk)
 		{
 			_Init = chunk;
-		}
-
-		public string GetInitChunkAsString()
-		{
-			return System.Convert.ToBase64String(_Init);
-		}
-
-		public void SetInitChunkByString(string base64Chunk)
-		{
-			if (!string.IsNullOrEmpty(base64Chunk))
-				SetInitChunk(System.Convert.FromBase64String(base64Chunk));
-			else
-				SetInitChunk(null);
 		}
 #endif
 	}

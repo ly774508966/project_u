@@ -52,7 +52,7 @@ namespace lua
 
 	public class Lua
 	{
-		public IntPtr luaState { get; private set; }
+		IntPtr luaState;
 
 		[MonoPInvokeCallback(typeof(Api.lua_Alloc))]
 		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
@@ -91,9 +91,15 @@ namespace lua
 			Api.lua_atpanic(luaState, Panic);
 			Api.luaL_requiref(luaState, "csharp", OpenCsharpLib, 1);
 		}
+
 		~Lua()
 		{
 			Api.lua_close(luaState);
+		}
+
+		public static implicit operator IntPtr(Lua l)
+		{
+			return l.luaState;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]

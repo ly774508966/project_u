@@ -31,6 +31,7 @@ public class Initializer : MonoBehaviour
 	void Awake()
 	{
 		comext.utils.App.Init();
+		lua.LuaBehaviour.SetLua(new lua.Lua());
 	}
 
 }

@@ -73,22 +73,14 @@ namespace lua
 
 	public class LuaBehaviour : MonoBehaviour
 	{
-		static Lua lua_;
-		static IntPtr luaState
-		{
-			get
-			{
-				if (lua_ == null)
-				{
-					lua_ = new Lua();
-				}
-				return lua_.luaState;
-			}
-		}
-
+		static Lua L;
 		public static void SetLua(Lua luaVm)
 		{
-			lua_ = luaVm;
+			if (L != null)
+			{
+				Debug.LogWarning("Lua state chagned, LuaBehaviour will run in new state.");
+			}
+			L = luaVm;
 		}
 
 
@@ -127,17 +119,29 @@ namespace lua
 		}
 
 		object handleToThis;
-		bool scriptLoaded = false;
+		bool scriptLoaded_ = false;
+		bool scriptLoaded
+		{
+			get
+			{
+				return L != null && scriptLoaded_;
+			}
+		}
 		int luaBehaviourRef = Api.LUA_NOREF;
 
 		void Awake()
 		{
+			if (L == null)
+			{
+				Debug.LogError("Call LuaBehaviour.SetLua first.");
+				return;
+			}
+
 			if (string.IsNullOrEmpty(scriptName))
 			{
 				Debug.LogWarning("LuaBehaviour with empty scriptName.");
 				return;
 			}
-			var L = luaState;
 
 			// make	instance
 			handleToThis = Lua.MakeRef(L, this);
@@ -183,7 +187,7 @@ namespace lua
 
 				Api.lua_pop(L, 1); // pop behaviour table
 
-				scriptLoaded = true;
+				scriptLoaded_ = true;
 
 			}
 			else
@@ -192,7 +196,7 @@ namespace lua
 			}
 
 
-			if (scriptLoaded)
+			if (scriptLoaded_)
 			{
 				// load	_Init from serialized version
 				LoadInitFunc(L);
@@ -251,16 +255,17 @@ namespace lua
 		void OnDestroy()
 		{
 			SendLuaMessage(Message.OnDestroy);
-			Api.luaL_unref(luaState, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-			if (handleToThis != null)
-				Lua.Unref(luaState, handleToThis);
+			if (L != null)
+			{
+				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+				if (handleToThis != null)
+					Lua.Unref(L, handleToThis);
+			}
 		}
 
 		public void SendLuaMessage(string message)
 		{
 			if (!scriptLoaded) return;
-
-			var L = luaState;
 
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
@@ -284,8 +289,6 @@ namespace lua
 			if (!scriptLoaded) return;
 
 			if ((messageFlag & MakeFlag(message)) == 0) return; // no message defined
-
-			var L = luaState;
 
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// get message func	from instance table

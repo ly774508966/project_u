@@ -113,14 +113,8 @@ namespace lua
 			return 1;
 		}
 
-
-
-
-		public delegate byte[] ScriptLoader(string scriptName);
-
-		public static ScriptLoader scriptLoader;
-
-		static ScriptLoader loadScriptFromFile
+		public static LuaScriptLoaderAttribute.ScriptLoader scriptLoader;
+		static LuaScriptLoaderAttribute.ScriptLoader loadScriptFromFile
 		{
 			get
 			{
@@ -131,7 +125,7 @@ namespace lua
 		}
 
 
-		public static string GetScriptPath(string scriptName)
+		static string GetScriptPath(string scriptName)
 		{
 			if (string.IsNullOrEmpty(scriptName)) return scriptName;
 			var path = "";
@@ -145,8 +139,19 @@ namespace lua
 			return path;
 		}
 
-		static byte[] DefaultScriptLoader(string scriptName)
+		static byte[] DefaultScriptLoader(string scriptName, out string scriptPath)
 		{
+#if UNITY_EDITOR
+			if (!Application.isPlaying)
+			{
+				var loader = LuaScriptLoaderAttribute.GetLoader();
+				if (loader != null)
+				{
+					return loader(scriptName, out scriptPath);
+				}
+			}
+#endif
+
 			var path = GetScriptPath(scriptName);
 #if !UNITY_EDITOR && UNITY_ANDROID
 			var www = new WWW(path);
@@ -160,19 +165,30 @@ namespace lua
 				throw new Exception(www.error);
 			}
 
+			scriptPath = path;
+
 			return www.bytes;
+		}
+
+		static void LoadScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		{
+			var bytes = loadScriptFromFile(scriptName, out scriptPath);
+			if (bytes == null)
+			{
+				throw new Exception("0 bytes loaded");
+			}
+			LoadChunk(L, bytes, scriptName);
+			Call(L, 0, 1);
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		public static int LoadScript(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
-
 			try
 			{
-				var bytes = loadScriptFromFile(scriptName);
-				LoadChunk(L, bytes, scriptName);
-				Call(L, 0, 1);
+				string scriptPath;
+				LoadScriptInternal(L, scriptName, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -181,6 +197,26 @@ namespace lua
 					string.Format("LoadScript \"{0}\" failed: {1}", scriptName, e.Message));
 			}
 			return 1;
+		}
+
+		// LoadScript, return result, scriptPath 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		public static int LoadScript2(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			try
+			{
+				string scriptPath;
+				LoadScriptInternal(L, scriptName, out scriptPath);
+				PushCsharpValue(L, scriptPath);
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(
+					L, 
+					string.Format("LoadScript2 \"{0}\" failed: {1}", scriptName, e.Message));
+			}
+			return 2;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
@@ -208,6 +244,8 @@ namespace lua
 
 		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "bt")
 		{
+			Debug.Assert(bytes != null);
+
 			var c = new Chunk();
 			c.bytes = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 			c.pos = 0;

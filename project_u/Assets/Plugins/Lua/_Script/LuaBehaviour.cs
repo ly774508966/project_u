@@ -85,6 +85,10 @@ namespace lua
 
 
 		public string scriptName;
+#if UNITY_EDITOR
+		[NonSerialized]
+		public string scriptPath;
+#endif
 
 		[SerializeField]
 		[HideInInspector]

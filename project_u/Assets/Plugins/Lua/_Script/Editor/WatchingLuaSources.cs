@@ -16,11 +16,13 @@ namespace lua
 
 		static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths) 
 		{
+			var sourceChanged = false;
 			foreach (string str in importedAssets)
 			{
 				if (str.EndsWith(".lua"))
 				{
 					luaSourceStatus[str] = Status.Reimported;
+					sourceChanged = true;
 				}
 			}
 			foreach (string str in deletedAssets) 
@@ -28,6 +30,7 @@ namespace lua
 				if (str.EndsWith(".lua"))
 				{
 					luaSourceStatus.Remove(str);
+					sourceChanged = true;
 				}
 			}	
 
@@ -39,7 +42,13 @@ namespace lua
 				{
 					luaSourceStatus.Remove(movedFromAssetPath);
 					luaSourceStatus[movedAsset] = Status.Reimported;
+					sourceChanged = true;
 				}
+			}
+
+			if (sourceChanged)
+			{
+				SceneView.RepaintAll();
 			}
 		}
 
@@ -62,9 +71,13 @@ namespace lua
 		{
 			if (string.IsNullOrEmpty(path)) return;
 
-			if (luaSourceStatus.ContainsKey(path))
+			var rootPath = new System.Uri(Application.dataPath);
+			var scriptPath = new System.Uri(path);
+			var relativeUri = rootPath.MakeRelativeUri(scriptPath);
+			var pathToCheck = relativeUri.ToString();
+			if (luaSourceStatus.ContainsKey(pathToCheck))
 			{
-				luaSourceStatus[path] = Status.Ok;
+				luaSourceStatus[pathToCheck] = Status.Ok;
 			}
 		}
 

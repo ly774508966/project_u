@@ -170,7 +170,7 @@ namespace lua
 			return www.bytes;
 		}
 
-		static void LoadScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		static void LoadBehaviourScriptInternal(IntPtr L, string scriptName, out string scriptPath)
 		{
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
@@ -182,13 +182,13 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript(IntPtr L)
+		internal static int LoadBehaviourScript(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, out scriptPath);
+				LoadBehaviourScriptInternal(L, scriptName, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -199,15 +199,16 @@ namespace lua
 			return 1;
 		}
 
-		// LoadScript, return result, scriptPath 
+#if UNITY_EDITOR
+		// LoadScript, return result, scriptPath , have to public for Editor script
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript2(IntPtr L)
+		public static int LoadBehaviourScriptInEditor(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, out scriptPath);
+				LoadBehaviourScriptInternal(L, scriptName, out scriptPath);
 				PushCsharpValue(L, scriptPath);
 			}
 			catch (Exception e)
@@ -218,6 +219,7 @@ namespace lua
 			}
 			return 2;
 		}
+#endif
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
 		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out uint size)

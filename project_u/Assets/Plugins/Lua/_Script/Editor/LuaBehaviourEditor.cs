@@ -93,7 +93,7 @@ namespace lua
 			reason = string.Empty;
 
 			// load from script
-			Api.lua_pushcclosure(L, Lua.LoadScript2, 0);
+			Api.lua_pushcclosure(L, Lua.LoadBehaviourScriptInEditor, 0);
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{
@@ -254,7 +254,7 @@ namespace lua
 			if (lb.IsInitFuncDumped())
 			{
 				// dump again, in case of Script._Init and Behaviour._Init being merged.
-				DumpInitValues(); 
+				DumpInitValues();
 			}
 		}
 

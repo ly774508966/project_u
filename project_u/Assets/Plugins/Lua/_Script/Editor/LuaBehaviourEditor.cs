@@ -32,7 +32,7 @@ namespace lua
 	public class LuaBehaviourEditor : Editor
 	{
 
-		static Lua lua = new Lua();
+		static Lua L = new Lua();
 
 		bool initChunkLoadFailed = false;
 		string reason;
@@ -89,9 +89,6 @@ namespace lua
 
 			initChunkLoadFailed = false;
 			reason = string.Empty;
-
-			var L = lua.luaState;
-
 
 			// load from script
 			Api.lua_pushcclosure(L, Lua.LoadScript, 0);

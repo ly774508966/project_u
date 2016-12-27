@@ -165,7 +165,7 @@ namespace lua
 			try
 			{
 				var bytes = loadScriptFromFile(scriptName);
-				LoadChunk(L, bytes, scriptName, mode: "bt");
+				LoadChunk(L, bytes, scriptName);
 				Call(L, 0, 1);
 			}
 			catch (Exception e)
@@ -200,23 +200,23 @@ namespace lua
 			public int pos;
 		}
 
-		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "b")
+		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "bt")
 		{
 			var c = new Chunk();
 			c.bytes = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 			c.pos = 0;
-			var handleToBinaryChunk = GCHandle.Alloc(c);
-			var ret = Api.lua_load(L, ChunkLoader, GCHandle.ToIntPtr(handleToBinaryChunk), chunkname, mode);
+			var handleToChunkBytes = GCHandle.Alloc(c);
+			var ret = Api.lua_load(L, ChunkLoader, GCHandle.ToIntPtr(handleToChunkBytes), chunkname, mode);
 			if (ret != Api.LUA_OK)
 			{
 				c.bytes.Free();
-				handleToBinaryChunk.Free();
+				handleToChunkBytes.Free();
 				var errMsg = Api.lua_tostring(L, -1);
 				Api.lua_pop(L, 1);
 				throw new LuaException(errMsg, ret);
 			}
 			c.bytes.Free();
-			handleToBinaryChunk.Free();
+			handleToChunkBytes.Free();
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
@@ -235,6 +235,11 @@ namespace lua
 
 		public static byte[] DumpChunk(IntPtr L, bool strip = true)
 		{
+			if (Application.isEditor)
+			{
+				Debug.LogWarning("Caution! the dumpped chunk is not portable.");
+			}
+
 			if (!Api.lua_isfunction(L, -1))
 				return null;
 

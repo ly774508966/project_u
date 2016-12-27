@@ -28,7 +28,7 @@ namespace lua
 	public class LuaInstanceBehaviour0 : MonoBehaviour
 	{
 		protected LuaBehaviour luaBehaviour;
-		void SetLuaBehaviour(LuaBehaviour behaviour)
+		internal void SetLuaBehaviour(LuaBehaviour behaviour)
 		{
 			luaBehaviour = behaviour;
 			luaBehaviour.SendLuaMessage(LuaBehaviour.Message.Awake); // Awake Lua Script

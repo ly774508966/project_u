@@ -203,30 +203,8 @@ namespace lua
 			if (scriptLoaded_)
 			{
 				// load	_Init from serialized version
-				LoadInitFunc(L);
-
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-
-				// Behaviour._Init hides Script._Init
-				Api.lua_getfield(L, -1, "_Init");
-				if (Api.lua_isfunction(L, -1))
-				{
-					Api.lua_pushvalue(L, -2);
-					try
-					{
-						Lua.Call(L, 1, 0);
-					}
-					catch (Exception e)
-					{
-						Debug.LogErrorFormat("{0}._Init failed: {1}.", scriptName, e.Message);
-					}
-				}
-				else
-				{
-					Api.lua_pop(L, 1); // pop non-function
-				}
-
-				Api.lua_pop(L, 1); // pop behaviour table
+				LoadInitFuncToBehaviourTable(L);
+				RunInitFuncOnBehaviourTable(L);
 
 				// Awake Lua script
 				instanceBehaviour.SetLuaBehaviour(this);
@@ -235,6 +213,30 @@ namespace lua
 			{
 				Debug.LogWarningFormat("No Lua script running with {0}.", gameObject.name);
 			}
+		}
+
+		void RunInitFuncOnBehaviourTable(IntPtr L)
+		{
+			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+			// Behaviour._Init hides Script._Init
+			Api.lua_getfield(L, -1, "_Init");
+			if (Api.lua_isfunction(L, -1))
+			{
+				Api.lua_pushvalue(L, -2);
+				try
+				{
+					Lua.Call(L, 1, 0);
+				}
+				catch (Exception e)
+				{
+					Debug.LogErrorFormat("{0}._Init failed: {1}.", scriptName, e.Message);
+				}
+			}
+			else
+			{
+				Api.lua_pop(L, 1); // pop non-function
+			}
+			Api.lua_pop(L, 1); // pop behaviour table
 		}
 
 		void Start()
@@ -316,7 +318,7 @@ namespace lua
 		[SerializeField]
 		[HideInInspector]
 		byte[] _Init;
-		bool LoadInitFunc(IntPtr L)
+		bool LoadInitFuncToBehaviourTable(IntPtr L)
 		{
 			if (_Init == null || _Init.Length == 0) return false;
 			try
@@ -369,6 +371,14 @@ namespace lua
 		public void SetInitChunk(byte[] chunk)
 		{
 			_Init = chunk;
+			if (Application.isPlaying)
+			{
+				if (scriptLoaded)
+				{
+					LoadInitFuncToBehaviourTable(L);
+					RunInitFuncOnBehaviourTable(L);
+				}
+			}
 		}
 #endif
 	}

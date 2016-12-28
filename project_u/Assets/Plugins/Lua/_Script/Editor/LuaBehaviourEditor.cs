@@ -32,7 +32,7 @@ namespace lua
 	public class LuaBehaviourEditor : Editor
 	{
 
-		static Lua L = new Lua();
+		Lua L;
 
 		bool noInitFunc = false;
 		bool initChunkLoadFailed = false;
@@ -93,7 +93,7 @@ namespace lua
 			reason = string.Empty;
 
 			// load from script
-			Api.lua_pushcclosure(L, Lua.LoadScript2, 0);
+			Api.lua_pushcclosure(L, Lua.LoadScript1InEditor, 0);
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{
@@ -254,7 +254,7 @@ namespace lua
 			if (lb.IsInitFuncDumped())
 			{
 				// dump again, in case of Script._Init and Behaviour._Init being merged.
-				DumpInitValues(); 
+				DumpInitValues();
 			}
 		}
 
@@ -272,6 +272,7 @@ namespace lua
 		GUIStyle errorTextFieldStyle, normalTextFieldStyle;
 		void OnEnable()
 		{
+			L = new Lua();
 			Undo.undoRedoPerformed += HandleUndoRedo;
 			Reload();
 		}
@@ -432,6 +433,10 @@ namespace lua
 					if (type == typeof(System.Double))
 					{
 						values[i] = EditorGUILayout.DoubleField(key, (double)value);
+					}
+					else if (type == typeof(System.Int64))
+					{
+						values[i] = EditorGUILayout.LongField(key, (long)value);
 					}
 					else if (type == typeof(string))
 					{

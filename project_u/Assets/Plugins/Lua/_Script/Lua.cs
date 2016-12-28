@@ -27,6 +27,11 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using AOT;
 
+// NEVER throw Lua exception in a C# native function
+// NEVER throw C# exception in lua_CFunction
+// catch all C# exception in any lua_CFunction and ThrowLuaException instead
+// CHECK above when you write down any thing.
+// if Panic (LuaFatalException) thrown, there is no way to resume execution after it (stack frame changed)
 
 namespace lua
 {
@@ -52,7 +57,7 @@ namespace lua
 
 	public class Lua
 	{
-		IntPtr luaState;
+		IntPtr L;
 
 		[MonoPInvokeCallback(typeof(Api.lua_Alloc))]
 		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
@@ -80,26 +85,95 @@ namespace lua
 			}
 		}
 
+		const string kLuaStub_ReplaceSearcher = 
+			"return function(s)\n" + 
+			"  package.searchers = { package.searchers[1], s }\n" +
+			"end\n";
+
+
+
 		public Lua()
 		{
 #if ALLOC_FROM_CSHARP
-			luaState = Api.lua_newstate(Alloc, IntPtr.Zero);
+			L = Api.lua_newstate(Alloc, IntPtr.Zero);
 #else
-			luaState = Api.luaL_newstate();
+			L = Api.luaL_newstate();
 #endif
-			Api.luaL_openlibs(luaState);
-			Api.lua_atpanic(luaState, Panic);
-			Api.luaL_requiref(luaState, "csharp", OpenCsharpLib, 1);
+			Api.luaL_openlibs(L);
+			Api.lua_atpanic(L, Panic);
+			Api.luaL_requiref(L, "csharp", OpenCsharpLib, 1);
+
+			// override searcher (insert in the second place, and remove all rest)
+			try
+			{
+				Api.luaL_dostring(L, kLuaStub_ReplaceSearcher);
+				Debug.Assert(Api.lua_isfunction(L, -1));
+				Api.lua_pushcclosure(L, Searcher, 0);
+				Call(L, 1, 0);
+			}
+			catch (Exception e)
+			{
+				Debug.LogError("Replace searchers failed." + e.Message);
+			}
 		}
 
 		~Lua()
 		{
-			Api.lua_close(luaState);
+			Api.lua_close(L);
 		}
 
 		public static implicit operator IntPtr(Lua l)
 		{
-			return l.luaState;
+			return l.L;
+		}
+
+
+		public void RunScript(string scriptName)
+		{
+			string scriptPath;
+			LoadChunkFromFile(L, scriptName, out scriptPath);
+			var top = Api.lua_gettop(L);
+			Call(L, 0, Api.LUA_MULTRET);
+			Api.lua_settop(L, top); // should left nothing on stack
+		}
+
+		public T RunScript<T>(string scriptName) where T : ILuaValueConverter
+		{
+			string scriptPath;
+			LoadChunkFromFile(L, scriptName, out scriptPath);
+			var top = Api.lua_gettop(L);
+			Call(L, 0, 1);
+			var ret = CsharpValueFrom<T>(this, -1);
+			Api.lua_settop(L, top); // should left nothing on stack
+			return ret;
+		}
+
+		public T Require<T>(string scriptName) where T : ILuaValueConverter
+		{
+			Api.luaL_requiref(L, scriptName, LoadScript1, 0);
+			var ret = CsharpValueFrom<T>(this, -1);
+			Api.lua_pop(L, 1);
+			return ret;
+		}
+		
+
+		// 
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		static int Searcher(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptPath = string.Empty;
+			try
+			{
+				LoadChunkFromFile(L, scriptName, out scriptPath);
+				PushCsharpValue(L, scriptPath);
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(L, e);
+			}
+			return 2;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
@@ -170,7 +244,7 @@ namespace lua
 			return www.bytes;
 		}
 
-		static void LoadScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		static void LoadChunkFromFile(IntPtr L, string scriptName, out string scriptPath)
 		{
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
@@ -178,17 +252,43 @@ namespace lua
 				throw new Exception("0 bytes loaded");
 			}
 			LoadChunk(L, bytes, scriptName);
-			Call(L, 0, 1);
 		}
 
+		static void LoadScriptInternal(IntPtr L, string scriptName, int nret, out string scriptPath)
+		{
+			LoadChunkFromFile(L, scriptName, out scriptPath);
+			Call(L, 0, nret);
+		}
+
+		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript(IntPtr L)
+		internal static int LoadScript(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			var top = Api.lua_gettop(L);
+			try
+			{
+				string scriptPath;
+				LoadScriptInternal(L, scriptName, Api.LUA_MULTRET, out scriptPath);
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(
+					L, 
+					string.Format("LoadScript \"{0}\" failed: {1}", scriptName, e.Message));
+			}
+			return Api.lua_gettop(L) - top;
+		}
+
+		// Run script and adjust the numb of return	value to 1
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		internal static int LoadScript1(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, out scriptPath);
+				LoadScriptInternal(L, scriptName, 1, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -199,15 +299,18 @@ namespace lua
 			return 1;
 		}
 
-		// LoadScript, return result, scriptPath 
+
+
+#if UNITY_EDITOR
+		// LoadScript, return result, scriptPath , have to public for Editor script
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript2(IntPtr L)
+		public static int LoadScript1InEditor(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, out scriptPath);
+				LoadScriptInternal(L, scriptName, 1, out scriptPath);
 				PushCsharpValue(L, scriptPath);
 			}
 			catch (Exception e)
@@ -218,9 +321,10 @@ namespace lua
 			}
 			return 2;
 		}
+#endif
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
-		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out uint size)
+		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out IntPtr size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
 			var chunk = handleToBinaryChunk.Target as Chunk;
@@ -228,11 +332,11 @@ namespace lua
 			if (chunk.pos < bytes.Length)
 			{
 				var curPos = chunk.pos;
-				size = (uint)bytes.Length; // read all at once
+				size = new IntPtr(bytes.Length); // read all at once
 				chunk.pos = bytes.Length;
 				return Marshal.UnsafeAddrOfPinnedArrayElement(bytes, curPos);
 			}
-			size = 0;
+			size = IntPtr.Zero;
 			return IntPtr.Zero;
 		}
 
@@ -264,11 +368,11 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
-		static int ChunkWriter(IntPtr L, IntPtr p, uint sz, IntPtr ud)
+		static int ChunkWriter(IntPtr L, IntPtr p, IntPtr sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
 			var output = handleToOutput.Target as System.IO.MemoryStream;
-			var toWrite = new byte[sz];
+			var toWrite = new byte[(int)sz];
 			unsafe
 			{
 				Marshal.Copy(p, toWrite, 0, toWrite.Length);
@@ -313,7 +417,7 @@ namespace lua
 		{
 			var handleToObj = GCHandle.Alloc(obj);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
-			var userdata = Api.lua_newuserdata(L, (uint)IntPtr.Size);
+			var userdata = Api.lua_newuserdata(L, new IntPtr(IntPtr.Size));
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
 
@@ -356,9 +460,31 @@ namespace lua
 			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, (int)objReference);
 		}
 
+		public static T CsharpValueFrom<T>(Lua L, int idx) where T : ILuaValueConverter
+		{
+			var inst = System.Activator.CreateInstance<T>();
+			if (inst.IsConvertable(L, idx))
+			{
+				inst.Convert(L, idx);
+			}
+			return inst;
+		}
 
+		public static object CsharpValueFrom(Lua L, int idx)
+		{
+			var type = Api.lua_type(L, idx);
+			// todo, wrap to function
+			if (type == Api.LUA_TTABLE)
+			{
+				return CsharpValueFrom<lua.LuaTable>(L, idx);
+			}
+			else
+			{
+				return CsharpValueFromInternal(L, idx);
+			}
+		}
 
-		public static object CsharpValueFrom(IntPtr L, int idx)
+		internal static object CsharpValueFromInternal(IntPtr L, int idx)
 		{
 			var type = Api.lua_type(L, idx);
 			switch (type)
@@ -371,8 +497,14 @@ namespace lua
 				case Api.LUA_TLIGHTUSERDATA:
 					return Api.lua_touserdata(L, idx);
 				case Api.LUA_TNUMBER:
-					int isnum = 0;
-					return Api.lua_tonumberx(L, idx, ref isnum);
+					if (Api.lua_isinteger(L, idx))
+					{
+						return Api.lua_tointeger(L, idx);
+					}
+					else
+					{
+						return Api.lua_tonumber(L, idx);
+					}
 				case Api.LUA_TSTRING:
 					return Api.lua_tostring(L, idx);
 				case Api.LUA_TUSERDATA:
@@ -879,13 +1011,23 @@ namespace lua
 			}
 
 			var type = value.GetType();
+			if (type.IsArray)
+			{
+				if (type == typeof(byte[]))
+				{
+					Api.lua_pushbytes(L, (byte[])value);
+					return;
+				}
+				// TODO: other primitive array
+			}
+			// other arrays currently go below, push as an object
+
 			if (type.IsPrimitive)
 			{
 				if (IsNumericType(type))
 				{
 					var number = System.Convert.ToDouble(value);
 					Api.lua_pushnumber(L, number);
-					Api.Assert(L, Api.lua_isnumber(L, -1));
 				}
 				else if (type == typeof(System.Boolean))
 				{
@@ -1037,7 +1179,7 @@ namespace lua
 
 			Api.Assert(L, typeObject != null, "Should has a type.");
 
-			if (Api.lua_isnumber(L, 2))
+			if (Api.lua_isinteger(L, 2))
 			{
 				if (typeObject != null && typeObject.IsArray)
 				{
@@ -1056,7 +1198,7 @@ namespace lua
 			}
 			else
 			{
-				return IndexObject(L, thisObject, typeObject, new object[] { CsharpValueFrom(L, 2) });
+				return IndexObject(L, thisObject, typeObject, new object[] { CsharpValueFromInternal(L, 2) });
 			}
 		}
 
@@ -1085,22 +1227,22 @@ namespace lua
 				if (typeObject != null && typeObject.IsArray)
 				{
 					var array = (System.Array)thisObject;
-					var value = CsharpValueFrom(L, 3);
+					var value = CsharpValueFromInternal(L, 3);
 					var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
 					array.SetValue(converted, Api.lua_tointeger(L, 2));
 				}
 				else
 				{
-					SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, CsharpValueFrom(L, 3));
+					SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, CsharpValueFromInternal(L, 3));
 				}
 			}
 			else if (Api.lua_isstring(L, 2))
 			{
-				SetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2), CsharpValueFrom(L, 3));
+				SetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2), CsharpValueFromInternal(L, 3));
 			}
 			else
 			{
-				SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { CsharpValueFrom(L, 2) }, CsharpValueFrom(L, 3));
+				SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { CsharpValueFromInternal(L, 2) }, CsharpValueFromInternal(L, 3));
 			}
 			return 0;
 		}
@@ -1145,13 +1287,13 @@ namespace lua
 				if (member.MemberType == System.Reflection.MemberTypes.Field)
 				{
 					var field = (System.Reflection.FieldInfo)member;
-					var converted = System.Convert.ChangeType(CsharpValueFrom(L, 3), field.FieldType);
+					var converted = System.Convert.ChangeType(CsharpValueFromInternal(L, 3), field.FieldType);
 					field.SetValue(thisObject, converted);
 				}
 				else if (member.MemberType == System.Reflection.MemberTypes.Property)
 				{
 					var prop = (System.Reflection.PropertyInfo)member;
-					var converted = System.Convert.ChangeType(CsharpValueFrom(L, 3), prop.PropertyType);
+					var converted = System.Convert.ChangeType(CsharpValueFromInternal(L, 3), prop.PropertyType);
 					prop.SetValue(thisObject, converted, null);
 				}
 				else
@@ -1165,7 +1307,7 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaToStringFunction(IntPtr L)
 		{
-			var thisObject = CsharpValueFrom(L, 1);
+			var thisObject = CsharpValueFromInternal(L, 1);
 			Api.lua_pushstring(L, thisObject.ToString());
 			return 1;
 		}

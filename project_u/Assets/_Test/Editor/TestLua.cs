@@ -598,11 +598,84 @@ namespace lua.test
 		{
 			var a = new SomeClass();
 			var val = a.MeCallYou2(lua.FuncTools.Wrap<string, int>(
-	   			(str) => {
+				(str) => {
 					Debug.Log(str);
 					return 10;
 				}));
 			Assert.AreEqual(10, val);
+		}
+
+		[Test]
+		public void TestRunScript()
+		{
+			var runMe = L.RunScript<lua.LuaTable>("RunMe");
+			var ret = runMe.Invoke("MyFunc", "Hello");
+			Assert.AreEqual(4, ret.Length);
+			Assert.AreEqual(1, ret[1]);
+			Assert.AreEqual(2, ret[2]);
+			Assert.AreEqual(3, ret[3]);
+			Assert.AreEqual("Hello", (string)ret[4]);
+
+			// set value in runMe, and re RunScript on RunMe, the value should lost
+			runMe["TestValue"] = "Test Value";
+			runMe[25] = 7788;
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+			Assert.AreEqual(7788, runMe[25]);
+
+			runMe = L.RunScript<lua.LuaTable>("RunMe");
+			Assert.AreEqual(null, runMe["TestValue"]);
+			Assert.AreEqual(null, runMe[25]);
+		}
+
+		[Test]
+		public void TestRequire()
+		{
+			var runMe = L.Require<lua.LuaTable>("RunMe");
+			var ret = runMe.Invoke("MyFunc", "Hello");
+			Assert.AreEqual(4, ret.Length);
+			Assert.AreEqual(1, ret[1]);
+			Assert.AreEqual(2, ret[2]);
+			Assert.AreEqual(3, ret[3]);
+			Assert.AreEqual("Hello", (string)ret[4]);
+
+			// set value in runMe, and re Require on RunMe, the value should be there
+			runMe["TestValue"] = "Test Value";
+			runMe[25] = 7788;
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+
+			runMe = L.Require<lua.LuaTable>("RunMe");
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+			Assert.AreEqual(7788, runMe[25]);
+		}
+
+		[Test]
+		public void TestPushBytesAsLuaString()
+		{
+			var stackTop = Api.lua_gettop(L);
+
+			var bytes = new byte[30];
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				bytes[i] = (byte)Random.Range(0, 255);
+			}
+			bytes[0] = 0;
+
+			Api.luaL_dostring(L, 
+				"return function(s)\n" +
+				"  return s\n" +
+				"end");
+			Assert.True(Api.lua_isfunction(L, -1));
+			Lua.PushCsharpValue(L, bytes);
+			Assert.True(Api.lua_isstring(L, -1));
+			Lua.Call(L, 1, 1);
+			var outBytes = Api.lua_tobytes(L, -1);
+			Assert.AreEqual(30, outBytes.Length);
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				Assert.AreEqual(bytes[i], outBytes[i]);
+			}
+
+			Api.lua_settop(L, stackTop);
 		}
 
 	}

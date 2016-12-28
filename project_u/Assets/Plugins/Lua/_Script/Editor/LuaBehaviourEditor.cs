@@ -434,6 +434,10 @@ namespace lua
 					{
 						values[i] = EditorGUILayout.DoubleField(key, (double)value);
 					}
+					else if (type == typeof(System.Int64))
+					{
+						values[i] = EditorGUILayout.LongField(key, (long)value);
+					}
 					else if (type == typeof(string))
 					{
 						values[i] = EditorGUILayout.TextField(key, (string)value);

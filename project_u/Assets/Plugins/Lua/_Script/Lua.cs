@@ -324,7 +324,7 @@ namespace lua
 #endif
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
-		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out uint size)
+		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out IntPtr size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
 			var chunk = handleToBinaryChunk.Target as Chunk;
@@ -332,11 +332,11 @@ namespace lua
 			if (chunk.pos < bytes.Length)
 			{
 				var curPos = chunk.pos;
-				size = (uint)bytes.Length; // read all at once
+				size = new IntPtr(bytes.Length); // read all at once
 				chunk.pos = bytes.Length;
 				return Marshal.UnsafeAddrOfPinnedArrayElement(bytes, curPos);
 			}
-			size = 0;
+			size = IntPtr.Zero;
 			return IntPtr.Zero;
 		}
 
@@ -368,11 +368,11 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
-		static int ChunkWriter(IntPtr L, IntPtr p, uint sz, IntPtr ud)
+		static int ChunkWriter(IntPtr L, IntPtr p, IntPtr sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
 			var output = handleToOutput.Target as System.IO.MemoryStream;
-			var toWrite = new byte[sz];
+			var toWrite = new byte[(int)sz];
 			unsafe
 			{
 				Marshal.Copy(p, toWrite, 0, toWrite.Length);
@@ -417,7 +417,7 @@ namespace lua
 		{
 			var handleToObj = GCHandle.Alloc(obj);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
-			var userdata = Api.lua_newuserdata(L, (uint)IntPtr.Size);
+			var userdata = Api.lua_newuserdata(L, new IntPtr(IntPtr.Size));
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
 
@@ -1179,7 +1179,7 @@ namespace lua
 
 			Api.Assert(L, typeObject != null, "Should has a type.");
 
-			if (Api.lua_isnumber(L, 2))
+			if (Api.lua_isinteger(L, 2))
 			{
 				if (typeObject != null && typeObject.IsArray)
 				{

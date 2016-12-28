@@ -343,7 +343,7 @@ MonoBehaviour:
   scriptName: LuaClickMe
   keys: []
   gameObjects: []
-  _Init: 
+  _Init: 72657475726e2066756e6374696f6e202869290d0a09692e76616c7565203d2038320d0a656e640d0a
 --- !u!1 &478987130
 GameObject:
   m_ObjectHideFlags: 0

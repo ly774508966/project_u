@@ -80,14 +80,14 @@ namespace lua
 		public const int LUA_NUMTAGS = 9;
 
 		public delegate int lua_CFunction(IntPtr L);
-		public delegate int lua_KFunction(IntPtr L, int status, long ctx);
+		public delegate int lua_KFunction(IntPtr L, int status, IntPtr ctx);
 
 		/*
 		** Type	for	functions that read/write blocks when loading/dumping Lua chunks
 		*/
-		public delegate IntPtr lua_Reader(IntPtr L, IntPtr ud, out uint sz);
-		public delegate int lua_Writer(IntPtr L, IntPtr p, uint sz, IntPtr ud);
-		public delegate IntPtr lua_Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize);
+		public delegate IntPtr lua_Reader(IntPtr L, IntPtr ud, out IntPtr sz);
+		public delegate int lua_Writer(IntPtr L, IntPtr p, IntPtr sz, IntPtr ud);
+		public delegate IntPtr lua_Alloc(IntPtr ud, IntPtr ptr, IntPtr osize, IntPtr nsize);
 
 		/*
 		** state manipulation
@@ -196,13 +196,13 @@ namespace lua
 		}
 
 		[DllImport(LIBNAME, EntryPoint = "lua_tolstring")]
-		public static extern IntPtr lua_tolstring(IntPtr L, int idx, out uint len);
+		public static extern IntPtr lua_tolstring(IntPtr L, int idx, out IntPtr len);
 
 		public static void lua_pushbytes(IntPtr L, byte[] bytes)
 		{
 			var h = GCHandle.Alloc(bytes, GCHandleType.Pinned);
 			var ptr = h.AddrOfPinnedObject();
-			lua_pushlstring(L,	ptr, (uint)bytes.Length);
+			lua_pushlstring(L,	ptr, new IntPtr(bytes.Length));
 			h.Free();
 		}
 
@@ -210,11 +210,11 @@ namespace lua
 		{
 			if (lua_isstring(L, idx))
 			{
-				uint len = 0;
+				IntPtr len;
 				var ptr = lua_tolstring(L, idx, out len);
-				if (len > 0 && IntPtr.Zero != ptr)
+				if ((int)len > 0 && IntPtr.Zero != ptr)
 				{
-					var bytes = new byte[len];
+					var bytes = new byte[(int)len];
 					Marshal.Copy(ptr, bytes, 0, (int)len);
 					return bytes;
 				}
@@ -224,7 +224,7 @@ namespace lua
 
 		public static string lua_tostring(IntPtr L, int idx)
 		{
-			uint len;
+			IntPtr len;
 			var strPtr = lua_tolstring(L, idx, out len);
 			if (strPtr != IntPtr.Zero)
 				return Marshal.PtrToStringAnsi(strPtr, (int)len);
@@ -263,7 +263,7 @@ namespace lua
 		[DllImport(LIBNAME)]
 		public static extern void lua_pushinteger(IntPtr L, long n);
 		[DllImport(LIBNAME)]
-		public static extern IntPtr lua_pushlstring(IntPtr L, IntPtr s, uint len);
+		public static extern IntPtr lua_pushlstring(IntPtr L, IntPtr s, IntPtr len);
 		[DllImport(LIBNAME)]
 		public static extern IntPtr lua_pushstring(IntPtr L, string str);
 		[DllImport(LIBNAME)]
@@ -308,7 +308,7 @@ namespace lua
 		[DllImport(LIBNAME)]
 		public static extern void lua_createtable(IntPtr L, int narr, int nrec);
 		[DllImport(LIBNAME)]
-		public static extern IntPtr lua_newuserdata(IntPtr L, uint sz);
+		public static extern IntPtr lua_newuserdata(IntPtr L, IntPtr sz);
 		[DllImport(LIBNAME)]
 		public static extern int lua_getmetatable(IntPtr L, int objindex);
 		[DllImport(LIBNAME)]
@@ -351,18 +351,18 @@ namespace lua
 		** 'load' and 'call' functions (load and run Lua code)
 		*/
 		[DllImport(LIBNAME)]
-		internal static extern void lua_callk(IntPtr L, int nargs, int nresults, long ctx, lua_KFunction k);
+		internal static extern void lua_callk(IntPtr L, int nargs, int nresults, IntPtr ctx, lua_KFunction k);
 		internal static void lua_call(IntPtr L, int nargs, int nresults)
 		{
-			lua_callk(L, nargs, nresults, 0, null);
+			lua_callk(L, nargs, nresults, IntPtr.Zero, null);
 		}
 
 		[DllImport(LIBNAME)]
-		public static extern int lua_pcallk(IntPtr L, int nargs, int nresults, int errfunc, long ctx, lua_KFunction k);
+		public static extern int lua_pcallk(IntPtr L, int nargs, int nresults, int errfunc, IntPtr ctx, lua_KFunction k);
 
 		public static int lua_pcall(IntPtr L, int nargs, int nresults, int errfunc)
 		{
-			return lua_pcallk(L, nargs, nresults, errfunc, 0, null);
+			return lua_pcallk(L, nargs, nresults, errfunc, IntPtr.Zero, null);
 		}
 
 		[DllImport(LIBNAME)]
@@ -379,16 +379,11 @@ namespace lua
 		** coroutine functions
 		*/
 		[DllImport(LIBNAME)]
-		public static extern int lua_yieldk(IntPtr L, int nresults, long ctx, lua_KFunction k);
-		/*
-				LUA_API int  (lua_resume)     (lua_State *L, lua_State *from, int narg);
-		LUA_API int  (lua_status)     (lua_State *L);
-		LUA_API int (lua_isyieldable) (lua_State *L);
-		*/
+		public static extern int lua_yieldk(IntPtr L, int nresults, IntPtr ctx, lua_KFunction k);
 
 		public static int lua_yield(IntPtr L, int n)
 		{
-			return lua_yieldk(L, (n), 0, null);
+			return lua_yieldk(L, (n), IntPtr.Zero, null);
 		}
 
 
@@ -428,10 +423,10 @@ namespace lua
 		// helpers
 
 		[DllImport(LIBNAME, EntryPoint = "luaL_checklstring")]
-		public static extern IntPtr luaL_checklstring(IntPtr L, int arg, out uint length);
+		public static extern IntPtr luaL_checklstring(IntPtr L, int arg, out IntPtr length);
 		public static string luaL_checkstring(IntPtr L, int arg)
 		{
-			uint len;
+			IntPtr len;
 			var strPtr = luaL_checklstring(L, arg, out len);
 			if (strPtr != IntPtr.Zero)
 				return Marshal.PtrToStringAnsi(strPtr, (int)len);

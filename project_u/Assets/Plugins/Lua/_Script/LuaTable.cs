@@ -97,7 +97,15 @@ namespace lua
 				var ret = Lua.CsharpValueFrom(L, -1);
 				Api.lua_pop(L, 1);
 				return ret;
-
+			}
+			set
+			{
+				if (!valid)
+					throw new System.InvalidOperationException("Invalid LuaTable");
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+				Lua.PushCsharpValue(L, value);
+				Api.lua_seti(L, -2, index);
+				Api.lua_pop(L, 1);
 			}
 		}
 
@@ -112,6 +120,15 @@ namespace lua
 				var ret = Lua.CsharpValueFrom(L, -1);
 				Api.lua_pop(L, 1);
 				return ret;
+			}
+			set
+			{
+				if (!valid)
+					throw new System.InvalidOperationException("Invalid LuaTable");
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+				Lua.PushCsharpValue(L, value);
+				Api.lua_setfield(L, -2, index);
+				Api.lua_pop(L, 1);
 			}
 		}
 

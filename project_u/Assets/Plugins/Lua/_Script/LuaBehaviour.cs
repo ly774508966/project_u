@@ -160,7 +160,7 @@ namespace lua
 			// meta
 			Api.lua_createtable(L, 0, 1);
 			// load	class
-			Api.luaL_requiref(L, scriptName, Lua.LoadBehaviourScript, 0);
+			Api.luaL_requiref(L, scriptName, Lua.LoadScript1, 0);
 
 			if (Api.lua_istable(L, -1)) // set metatable and bind messages
 			{

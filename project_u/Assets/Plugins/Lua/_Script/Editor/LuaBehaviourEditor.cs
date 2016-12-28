@@ -93,7 +93,7 @@ namespace lua
 			reason = string.Empty;
 
 			// load from script
-			Api.lua_pushcclosure(L, Lua.LoadBehaviourScriptInEditor, 0);
+			Api.lua_pushcclosure(L, Lua.LoadScript1InEditor, 0);
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{

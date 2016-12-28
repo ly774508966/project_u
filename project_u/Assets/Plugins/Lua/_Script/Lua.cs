@@ -148,6 +148,14 @@ namespace lua
 			return ret;
 		}
 
+		public T Require<T>(string scriptName) where T : ILuaValueConverter
+		{
+			Api.luaL_requiref(L, scriptName, LoadScript1, 0);
+			var ret = CsharpValueFrom<T>(this, -1);
+			Api.lua_pop(L, 1);
+			return ret;
+		}
+		
 
 		// 
 
@@ -246,20 +254,41 @@ namespace lua
 			LoadChunk(L, bytes, scriptName);
 		}
 
-		static void LoadBehaviourScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		static void LoadScriptInternal(IntPtr L, string scriptName, int nret, out string scriptPath)
 		{
 			LoadChunkFromFile(L, scriptName, out scriptPath);
-			Call(L, 0, 1);
+			Call(L, 0, nret);
 		}
 
+		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int LoadBehaviourScript(IntPtr L)
+		internal static int LoadScript(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			var top = Api.lua_gettop(L);
+			try
+			{
+				string scriptPath;
+				LoadScriptInternal(L, scriptName, Api.LUA_MULTRET, out scriptPath);
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(
+					L, 
+					string.Format("LoadScript \"{0}\" failed: {1}", scriptName, e.Message));
+			}
+			return Api.lua_gettop(L) - top;
+		}
+
+		// Run script and adjust the numb of return	value to 1
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		internal static int LoadScript1(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadBehaviourScriptInternal(L, scriptName, out scriptPath);
+				LoadScriptInternal(L, scriptName, 1, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -270,16 +299,18 @@ namespace lua
 			return 1;
 		}
 
+
+
 #if UNITY_EDITOR
 		// LoadScript, return result, scriptPath , have to public for Editor script
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadBehaviourScriptInEditor(IntPtr L)
+		public static int LoadScript1InEditor(IntPtr L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadBehaviourScriptInternal(L, scriptName, out scriptPath);
+				LoadScriptInternal(L, scriptName, 1, out scriptPath);
 				PushCsharpValue(L, scriptPath);
 			}
 			catch (Exception e)

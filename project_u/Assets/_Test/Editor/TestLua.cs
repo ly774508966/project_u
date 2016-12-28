@@ -615,7 +615,37 @@ namespace lua.test
 			Assert.AreEqual(2, ret[2]);
 			Assert.AreEqual(3, ret[3]);
 			Assert.AreEqual("Hello", (string)ret[4]);
+
+			// set value in runMe, and re RunScript on RunMe, the value should lost
+			runMe["TestValue"] = "Test Value";
+			runMe[25] = 7788;
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+			Assert.AreEqual(7788, runMe[25]);
+
+			runMe = L.RunScript<lua.LuaTable>("RunMe");
+			Assert.AreEqual(null, runMe["TestValue"]);
+			Assert.AreEqual(null, runMe[25]);
 		}
 
-	}
+		[Test]
+		public void TestRequire()
+		{
+			var runMe = L.Require<lua.LuaTable>("RunMe");
+			var ret = runMe.Invoke("MyFunc", "Hello");
+			Assert.AreEqual(4, ret.Length);
+			Assert.AreEqual(1, ret[1]);
+			Assert.AreEqual(2, ret[2]);
+			Assert.AreEqual(3, ret[3]);
+			Assert.AreEqual("Hello", (string)ret[4]);
+
+			// set value in runMe, and re Require on RunMe, the value should be there
+			runMe["TestValue"] = "Test Value";
+			runMe[25] = 7788;
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+
+			runMe = L.Require<lua.LuaTable>("RunMe");
+			Assert.AreEqual("Test Value", runMe["TestValue"]);
+			Assert.AreEqual(7788, runMe[25]);
+		}
+    }
 }

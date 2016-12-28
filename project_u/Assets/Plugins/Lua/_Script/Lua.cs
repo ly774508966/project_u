@@ -27,6 +27,11 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using AOT;
 
+// NEVER throw Lua exception in a C# native function
+// NEVER throw C# exception in lua_CFunction
+// catch all C# exception in any lua_CFunction and ThrowLuaException instead
+// CHECK above when you write down any thing.
+// if Panic (LuaFatalException) thrown, there is no way to resume execution after it (stack frame changed)
 
 namespace lua
 {
@@ -52,7 +57,7 @@ namespace lua
 
 	public class Lua
 	{
-		IntPtr luaState;
+		IntPtr L;
 
 		[MonoPInvokeCallback(typeof(Api.lua_Alloc))]
 		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
@@ -80,26 +85,75 @@ namespace lua
 			}
 		}
 
+		const string kLuaStub_ReplaceSearcher = 
+			"return function(s)\n" + 
+			"  package.searchers = { package.searchers[1], s }\n" +
+			"end\n";
+
+
+
 		public Lua()
 		{
 #if ALLOC_FROM_CSHARP
-			luaState = Api.lua_newstate(Alloc, IntPtr.Zero);
+			L = Api.lua_newstate(Alloc, IntPtr.Zero);
 #else
-			luaState = Api.luaL_newstate();
+			L = Api.luaL_newstate();
 #endif
-			Api.luaL_openlibs(luaState);
-			Api.lua_atpanic(luaState, Panic);
-			Api.luaL_requiref(luaState, "csharp", OpenCsharpLib, 1);
+			Api.luaL_openlibs(L);
+			Api.lua_atpanic(L, Panic);
+			Api.luaL_requiref(L, "csharp", OpenCsharpLib, 1);
+
+			// override searcher (insert in the second place, and remove all rest)
+			try
+			{
+				Api.luaL_dostring(L, kLuaStub_ReplaceSearcher);
+				Debug.Assert(Api.lua_isfunction(L, -1));
+				Api.lua_pushcclosure(L, Searcher, 0);
+				Call(L, 1, 0);
+			}
+			catch (Exception e)
+			{
+				Debug.LogError("Replace searchers failed." + e.Message);
+			}
 		}
 
 		~Lua()
 		{
-			Api.lua_close(luaState);
+			Api.lua_close(L);
 		}
 
 		public static implicit operator IntPtr(Lua l)
 		{
-			return l.luaState;
+			return l.L;
+		}
+
+		public void RunScript(string scriptName)
+		{
+			string scriptPath;
+			LoadChunkFromFile(L, scriptName, out scriptPath);
+			var top = Api.lua_gettop(L);
+			Call(L, 0, Api.LUA_MULTRET);
+			Api.lua_settop(L, top); // should left nothing on stack
+		}
+
+
+		// 
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		static int Searcher(IntPtr L)
+		{
+			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptPath = string.Empty;
+			try
+			{
+				LoadChunkFromFile(L, scriptName, out scriptPath);
+				PushCsharpValue(L, scriptPath);
+			}
+			catch (Exception e)
+			{
+				ThrowLuaException(L, e);
+			}
+			return 2;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
@@ -170,7 +224,7 @@ namespace lua
 			return www.bytes;
 		}
 
-		static void LoadBehaviourScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		static void LoadChunkFromFile(IntPtr L, string scriptName, out string scriptPath)
 		{
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
@@ -178,6 +232,11 @@ namespace lua
 				throw new Exception("0 bytes loaded");
 			}
 			LoadChunk(L, bytes, scriptName);
+		}
+
+		static void LoadBehaviourScriptInternal(IntPtr L, string scriptName, out string scriptPath)
+		{
+			LoadChunkFromFile(L, scriptName, out scriptPath);
 			Call(L, 0, 1);
 		}
 

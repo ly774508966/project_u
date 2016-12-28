@@ -32,7 +32,7 @@ namespace lua
 	public class LuaBehaviourEditor : Editor
 	{
 
-		static Lua L = new Lua();
+		Lua L;
 
 		bool noInitFunc = false;
 		bool initChunkLoadFailed = false;
@@ -272,6 +272,7 @@ namespace lua
 		GUIStyle errorTextFieldStyle, normalTextFieldStyle;
 		void OnEnable()
 		{
+			L = new Lua();
 			Undo.undoRedoPerformed += HandleUndoRedo;
 			Reload();
 		}

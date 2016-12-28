@@ -1011,13 +1011,23 @@ namespace lua
 			}
 
 			var type = value.GetType();
+			if (type.IsArray)
+			{
+				if (type == typeof(byte[]))
+				{
+					Api.lua_pushbytes(L, (byte[])value);
+					return;
+				}
+				// TODO: other primitive array
+			}
+			// other arrays currently go below, push as an object
+
 			if (type.IsPrimitive)
 			{
 				if (IsNumericType(type))
 				{
 					var number = System.Convert.ToDouble(value);
 					Api.lua_pushnumber(L, number);
-					Api.Assert(L, Api.lua_isnumber(L, -1));
 				}
 				else if (type == typeof(System.Boolean))
 				{

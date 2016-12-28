@@ -196,11 +196,36 @@ namespace lua
 		}
 
 		[DllImport(LIBNAME, EntryPoint = "lua_tolstring")]
-		static extern IntPtr lua_tolstring_(IntPtr L, int idx, out long len);
+		public static extern IntPtr lua_tolstring(IntPtr L, int idx, out uint len);
+
+		public static void lua_pushbytes(IntPtr L, byte[] bytes)
+		{
+			var h = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+			var ptr = h.AddrOfPinnedObject();
+			lua_pushlstring(L,	ptr, (uint)bytes.Length);
+			h.Free();
+		}
+
+		public static byte[] lua_tobytes(IntPtr L, int idx)
+		{
+			if (lua_isstring(L, idx))
+			{
+				uint len = 0;
+				var ptr = lua_tolstring(L, idx, out len);
+				if (len > 0 && IntPtr.Zero != ptr)
+				{
+					var bytes = new byte[len];
+					Marshal.Copy(ptr, bytes, 0, (int)len);
+					return bytes;
+				}
+			}
+			return null;
+		}
+
 		public static string lua_tostring(IntPtr L, int idx)
 		{
-			long len;
-			var strPtr = lua_tolstring_(L, idx, out len);
+			uint len;
+			var strPtr = lua_tolstring(L, idx, out len);
 			if (strPtr != IntPtr.Zero)
 				return Marshal.PtrToStringAnsi(strPtr, (int)len);
 			return null;
@@ -237,6 +262,8 @@ namespace lua
 		public static extern void lua_pushnumber(IntPtr L, double n);
 		[DllImport(LIBNAME)]
 		public static extern void lua_pushinteger(IntPtr L, long n);
+		[DllImport(LIBNAME)]
+		public static extern IntPtr lua_pushlstring(IntPtr L, IntPtr s, uint len);
 		[DllImport(LIBNAME)]
 		public static extern IntPtr lua_pushstring(IntPtr L, string str);
 		[DllImport(LIBNAME)]
@@ -401,11 +428,11 @@ namespace lua
 		// helpers
 
 		[DllImport(LIBNAME, EntryPoint = "luaL_checklstring")]
-		static extern IntPtr luaL_checklstring_(IntPtr L, int arg, out long length);
+		public static extern IntPtr luaL_checklstring(IntPtr L, int arg, out uint length);
 		public static string luaL_checkstring(IntPtr L, int arg)
 		{
-			long len;
-			var strPtr = luaL_checklstring_(L, arg, out len);
+			uint len;
+			var strPtr = luaL_checklstring(L, arg, out len);
 			if (strPtr != IntPtr.Zero)
 				return Marshal.PtrToStringAnsi(strPtr, (int)len);
 			return null;

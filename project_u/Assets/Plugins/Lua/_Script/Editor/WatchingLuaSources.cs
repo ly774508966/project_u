@@ -5,7 +5,7 @@ using UnityEditor;
 
 namespace lua
 {
-	class WatchingLuaSources : AssetPostprocessor 
+	public class WatchingLuaSources : AssetPostprocessor 
 	{
 		enum Status 
 		{
@@ -13,6 +13,8 @@ namespace lua
 			Reimported,
 		};
 		static Dictionary<string, Status> luaSourceStatus = new Dictionary<string, Status>();
+
+		public static event System.Action onSourceChanged;
 
 		static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths) 
 		{
@@ -46,8 +48,9 @@ namespace lua
 				}
 			}
 
-			if (sourceChanged)
+			if (sourceChanged && onSourceChanged != null)
 			{
+				onSourceChanged();
 				SceneView.RepaintAll();
 			}
 		}

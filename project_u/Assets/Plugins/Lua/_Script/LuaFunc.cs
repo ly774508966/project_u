@@ -107,7 +107,7 @@ namespace lua
 					Debug.LogError(e.Message);
 					return default(TRet);
 				}
-				var retValue = Lua.CsharpValueFrom(L, -1);
+				var retValue = Lua.CsharpValueFromInternal(L, -1);
 				return (TRet)System.Convert.ChangeType(retValue, retType);
 			}
 		}

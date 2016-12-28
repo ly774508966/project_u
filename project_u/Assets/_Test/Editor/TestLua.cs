@@ -598,11 +598,23 @@ namespace lua.test
 		{
 			var a = new SomeClass();
 			var val = a.MeCallYou2(lua.FuncTools.Wrap<string, int>(
-	   			(str) => {
+				(str) => {
 					Debug.Log(str);
 					return 10;
 				}));
 			Assert.AreEqual(10, val);
+		}
+
+		[Test]
+		public void TestRunScript()
+		{
+			var runMe = L.RunScript<lua.LuaTable>("RunMe");
+			var ret = runMe.Invoke("MyFunc", "Hello");
+			Assert.AreEqual(4, ret.Length);
+			Assert.AreEqual(1, ret[1]);
+			Assert.AreEqual(2, ret[2]);
+			Assert.AreEqual(3, ret[3]);
+			Assert.AreEqual("Hello", (string)ret[4]);
 		}
 
 	}

@@ -127,6 +127,7 @@ namespace lua
 			return l.L;
 		}
 
+
 		public void RunScript(string scriptName)
 		{
 			string scriptPath;
@@ -134,6 +135,17 @@ namespace lua
 			var top = Api.lua_gettop(L);
 			Call(L, 0, Api.LUA_MULTRET);
 			Api.lua_settop(L, top); // should left nothing on stack
+		}
+
+		public T RunScript<T>(string scriptName) where T : ILuaValueConverter
+		{
+			string scriptPath;
+			LoadChunkFromFile(L, scriptName, out scriptPath);
+			var top = Api.lua_gettop(L);
+			Call(L, 0, 1);
+			var ret = CsharpValueFrom<T>(this, -1);
+			Api.lua_settop(L, top); // should left nothing on stack
+			return ret;
 		}
 
 
@@ -417,9 +429,31 @@ namespace lua
 			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, (int)objReference);
 		}
 
+		public static T CsharpValueFrom<T>(Lua L, int idx) where T : ILuaValueConverter
+		{
+			var inst = System.Activator.CreateInstance<T>();
+			if (inst.IsConvertable(L, idx))
+			{
+				inst.Convert(L, idx);
+			}
+			return inst;
+		}
 
+		public static object CsharpValueFrom(Lua L, int idx)
+		{
+			var type = Api.lua_type(L, idx);
+			// todo, wrap to function
+			if (type == Api.LUA_TTABLE)
+			{
+				return CsharpValueFrom<lua.LuaTable>(L, idx);
+			}
+			else
+			{
+				return CsharpValueFromInternal(L, idx);
+			}
+		}
 
-		public static object CsharpValueFrom(IntPtr L, int idx)
+		internal static object CsharpValueFromInternal(IntPtr L, int idx)
 		{
 			var type = Api.lua_type(L, idx);
 			switch (type)
@@ -432,8 +466,14 @@ namespace lua
 				case Api.LUA_TLIGHTUSERDATA:
 					return Api.lua_touserdata(L, idx);
 				case Api.LUA_TNUMBER:
-					int isnum = 0;
-					return Api.lua_tonumberx(L, idx, ref isnum);
+					if (Api.lua_isinteger(L, idx))
+					{
+						return Api.lua_tointeger(L, idx);
+					}
+					else
+					{
+						return Api.lua_tonumber(L, idx);
+					}
 				case Api.LUA_TSTRING:
 					return Api.lua_tostring(L, idx);
 				case Api.LUA_TUSERDATA:
@@ -1117,7 +1157,7 @@ namespace lua
 			}
 			else
 			{
-				return IndexObject(L, thisObject, typeObject, new object[] { CsharpValueFrom(L, 2) });
+				return IndexObject(L, thisObject, typeObject, new object[] { CsharpValueFromInternal(L, 2) });
 			}
 		}
 
@@ -1146,22 +1186,22 @@ namespace lua
 				if (typeObject != null && typeObject.IsArray)
 				{
 					var array = (System.Array)thisObject;
-					var value = CsharpValueFrom(L, 3);
+					var value = CsharpValueFromInternal(L, 3);
 					var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
 					array.SetValue(converted, Api.lua_tointeger(L, 2));
 				}
 				else
 				{
-					SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, CsharpValueFrom(L, 3));
+					SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, CsharpValueFromInternal(L, 3));
 				}
 			}
 			else if (Api.lua_isstring(L, 2))
 			{
-				SetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2), CsharpValueFrom(L, 3));
+				SetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2), CsharpValueFromInternal(L, 3));
 			}
 			else
 			{
-				SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { CsharpValueFrom(L, 2) }, CsharpValueFrom(L, 3));
+				SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { CsharpValueFromInternal(L, 2) }, CsharpValueFromInternal(L, 3));
 			}
 			return 0;
 		}
@@ -1206,13 +1246,13 @@ namespace lua
 				if (member.MemberType == System.Reflection.MemberTypes.Field)
 				{
 					var field = (System.Reflection.FieldInfo)member;
-					var converted = System.Convert.ChangeType(CsharpValueFrom(L, 3), field.FieldType);
+					var converted = System.Convert.ChangeType(CsharpValueFromInternal(L, 3), field.FieldType);
 					field.SetValue(thisObject, converted);
 				}
 				else if (member.MemberType == System.Reflection.MemberTypes.Property)
 				{
 					var prop = (System.Reflection.PropertyInfo)member;
-					var converted = System.Convert.ChangeType(CsharpValueFrom(L, 3), prop.PropertyType);
+					var converted = System.Convert.ChangeType(CsharpValueFromInternal(L, 3), prop.PropertyType);
 					prop.SetValue(thisObject, converted, null);
 				}
 				else
@@ -1226,7 +1266,7 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int MetaToStringFunction(IntPtr L)
 		{
-			var thisObject = CsharpValueFrom(L, 1);
+			var thisObject = CsharpValueFromInternal(L, 1);
 			Api.lua_pushstring(L, thisObject.ToString());
 			return 1;
 		}

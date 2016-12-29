@@ -27,61 +27,55 @@ using UnityEngine;
 
 namespace lua
 {
-	public class LuaTable : ILuaValueConverter
+	public class LuaTable
 	{
-		Lua L;
-		int refToTable = Api.LUA_NOREF;
+		Lua L_;
+		object refToTable;
 
-		public LuaTable()
+		LuaTable(Lua L, int idx)
 		{
-		}
-
-		public LuaTable(Lua L)
-		{
-			Api.lua_newtable(L);
-			Convert(L, -1);
-			Api.lua_pop(L, 1);
+			L_ = L;
+			refToTable = L.MakeRefAt(idx);
 		}
 
 		public bool valid
 		{
 			get
 			{
-				return L != null && refToTable >= 0;
+				return L_.valid;
 			}
 		}
 
-		public void Convert(Lua L, int idx)
+		internal static LuaTable ReferenceTo(Lua L, int idx)
 		{
 			Debug.Assert(Api.lua_istable(L, idx));
-			Api.lua_pushvalue(L, idx);
-			refToTable = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
-			this.L = L;
-		}
-
-		public bool IsConvertable(Lua L, int idx)
-		{
-			return Api.lua_type(L, idx) == Api.LUA_TTABLE;
+			return new LuaTable(L, idx);
 		}
 
 		~LuaTable()
 		{
-			if (L != null)
+			if (L_.valid)
 			{
-				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, refToTable);
+				L_.Unref(refToTable);
 			}
+		}
+
+		Lua CheckValid()
+		{
+			if (!L_.valid)
+				throw new System.InvalidOperationException("Lua vm already destroyed.");
+			return L_;
 		}
 
 		public int Length
 		{
 			get
 			{
-				if (!valid)
-					throw new System.InvalidOperationException("Invalid LuaTable");
+				var L = CheckValid();
 				var ret = 0;
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+				L.PushRef(refToTable);
 				ret = Api.lua_len(L, -1);
-				Api.lua_pop(L, 1);
+				Api.lua_pop(L, 2);
 				return ret;
 			}
 		}
@@ -90,20 +84,18 @@ namespace lua
 		{
 			get
 			{
-				if (!valid)
-					throw new System.InvalidOperationException("Invalid LuaTable");
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+				var L = CheckValid();
+				L.PushRef(refToTable);
 				Api.lua_geti(L, -1, index);
-				var ret = Lua.CsharpValueFrom(L, -1);
-				Api.lua_pop(L, 1);
+				var ret = L.ValueAt(-1);
+				Api.lua_pop(L, 2);
 				return ret;
 			}
 			set
 			{
-				if (!valid)
-					throw new System.InvalidOperationException("Invalid LuaTable");
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
-				Lua.PushCsharpValue(L, value);
+				var L = CheckValid();
+				L.PushRef(refToTable);
+				L.PushValue(value);
 				Api.lua_seti(L, -2, index);
 				Api.lua_pop(L, 1);
 			}
@@ -113,20 +105,18 @@ namespace lua
 		{
 			get
 			{
-				if (!valid)
-					throw new System.InvalidOperationException("Invalid LuaTable");
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+				var L = CheckValid();
+				L.PushRef(refToTable);
 				Api.lua_getfield(L, -1, index);
-				var ret = Lua.CsharpValueFrom(L, -1);
-				Api.lua_pop(L, 1);
+				var ret = L.ValueAt(-1);
+				Api.lua_pop(L, 2);
 				return ret;
 			}
 			set
 			{
-				if (!valid)
-					throw new System.InvalidOperationException("Invalid LuaTable");
-				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
-				Lua.PushCsharpValue(L, value);
+				var L = CheckValid();
+				L.PushRef(refToTable);
+				L.PushValue(value);
 				Api.lua_setfield(L, -2, index);
 				Api.lua_pop(L, 1);
 			}
@@ -135,19 +125,18 @@ namespace lua
 
 		public lua.LuaTable Invoke(string name, params object[] args)
 		{
-			if (!valid)
-				throw new System.InvalidOperationException("Invalid LuaTable");
+			var L = CheckValid();
 
 			LuaTable ret = null;
 
-			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, refToTable);
+			L.PushRef(refToTable);
 			var top = Api.lua_gettop(L);
 			if (Api.lua_getfield(L, -1, name) == Api.LUA_TFUNCTION)
 			{
 				Api.lua_pushvalue(L, -2);
 				for (int i = 0; i < args.Length; ++i)
 				{
-					Lua.PushCsharpValue(L, args[i]);
+					L.PushValue(args[i]);
 				}
 				Lua.Call(L, 1 + args.Length, Api.LUA_MULTRET);
 				var nrets = Api.lua_gettop(L) - top;
@@ -159,12 +148,11 @@ namespace lua
 						Api.lua_pushvalue(L, -i - 1); // value at -i - 1
 						Api.lua_seti(L, -2, nrets - i + 1);
 					}
-					ret = new LuaTable();
-					ret.Convert(L, -1);
+					ret = ReferenceTo(L, -1);
 					Api.lua_pop(L, 1);
 				}
 			}
-			Api.lua_settop(L, top); // left nothing on stack
+			Api.lua_settop(L, top - 1); // left nothing on stack
 			return ret;
 		}
 

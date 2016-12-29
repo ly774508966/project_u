@@ -30,37 +30,41 @@ namespace lua
 	{
 		public class FuncBase
 		{
-			protected System.IntPtr L;
-			protected int funcRef;
+			protected Lua L_;
+			protected object funcRef;
 
-			protected FuncBase(System.IntPtr L)
+			protected FuncBase(Lua L, int index = -1)
 			{
-				this.L = L;
-				if (this.L != System.IntPtr.Zero)
-					this.funcRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+				if (L != null)
+				{
+					L_ = L;
+					Debug.Assert(L.valid);
+					Debug.Assert(Api.lua_isfunction(L, index));
+					funcRef = L_.MakeRefAt(index);
+				}
 			}
 
 			~FuncBase()
 			{
-				if (L != System.IntPtr.Zero)
-					Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, funcRef);
+				if (L_.valid)
+					L_.Unref(funcRef);
+			}
+
+			protected Lua CheckValid()
+			{
+				if (L_.valid) return L_;
+				throw new LuaDestroyedException("invalid FuncTools Operation");
 			}
 
 			protected void Invoke(System.Type retType, object[] args)
 			{
-				if (L == System.IntPtr.Zero)
-					return;
-					
-				if (Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, funcRef)
-					== Api.LUA_TFUNCTION)
+				var L = CheckValid();
+				L_.PushRef(funcRef);
+				for (int i = 0; i < args.Length; ++i)
 				{
-
-					for (int i = 0; i < args.Length; ++i)
-					{	
-						Lua.PushCsharpValue(L, args[i]);
-					}
-					Lua.Call(L, args.Length, retType != null ? 1 : 0);
+					L.PushValue(args[i]);
 				}
+				Lua.Call(L, args.Length, retType != null ? 1 : 0);
 			}
 
 		}
@@ -68,13 +72,15 @@ namespace lua
 
 		public class Action : FuncBase
 		{
-			public Action(System.IntPtr L)
-				: base(L)
+			public Action(Lua L, int index = -1)
+				: base(L, index)
 			{
 			}
 
 			public virtual void Invoke(params object[] args)
 			{
+				var L = CheckValid();
+				var top = Api.lua_gettop(L);
 				try
 				{
 					base.Invoke(null, args);
@@ -83,6 +89,7 @@ namespace lua
 				{
 					Debug.LogError(e.Message);
 				}
+				Api.lua_settop(L, top);
 			}
 
 		}
@@ -90,24 +97,29 @@ namespace lua
 
 		public class Func<TRet> : FuncBase
 		{
-			public Func(System.IntPtr L)
-				: base(L)
+			public Func(Lua L, int index = -1)
+				: base(L, index)
 			{
 			}
 
 			public virtual TRet Invoke(params object[] args)
 			{
+				var L = CheckValid();
+
 				var retType = typeof(TRet);
-				try 
+				var top = Api.lua_gettop(L);
+				try
 				{
 					base.Invoke(retType, args);
 				}
 				catch (System.Exception e)
 				{
 					Debug.LogError(e.Message);
+					Api.lua_settop(L, top);
 					return default(TRet);
 				}
-				var retValue = Lua.CsharpValueFromInternal(L, -1);
+				var retValue = L.ValueAt(-1);
+				Api.lua_settop(L, top);
 				return (TRet)System.Convert.ChangeType(retValue, retType);
 			}
 		}
@@ -117,7 +129,7 @@ namespace lua
 			System.Action action;
 
 			public ActionWrapper(System.Action action)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.action = action;
 			}
@@ -132,7 +144,7 @@ namespace lua
 			System.Action<T1> action;
 
 			public ActionWrapper(System.Action<T1> action)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.action = action;
 			}
@@ -147,7 +159,7 @@ namespace lua
 			System.Action<T1, T2> action;
 
 			public ActionWrapper(System.Action<T1, T2> action)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.action = action;
 			}
@@ -162,7 +174,7 @@ namespace lua
 			System.Action<T1, T2, T3> action;
 
 			public ActionWrapper(System.Action<T1, T2, T3> action)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.action = action;
 			}
@@ -177,7 +189,7 @@ namespace lua
 			System.Action<T1, T2, T3, T4> action;
 
 			public ActionWrapper(System.Action<T1, T2, T3, T4> action)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.action = action;
 			}
@@ -218,7 +230,7 @@ namespace lua
 			System.Func<TRet> func;
 
 			public FuncWrapper(System.Func<TRet> func)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.func = func;
 			}
@@ -233,7 +245,7 @@ namespace lua
 			System.Func<T1, TRet> func;
 
 			public FuncWrapper(System.Func<T1, TRet> func)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.func = func;
 			}
@@ -248,7 +260,7 @@ namespace lua
 			System.Func<T1, T2, TRet> func;
 
 			public FuncWrapper(System.Func<T1, T2, TRet> func)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.func = func;
 			}
@@ -263,7 +275,7 @@ namespace lua
 			System.Func<T1, T2, T3, TRet> func;
 
 			public FuncWrapper(System.Func<T1, T2, T3, TRet> func)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.func = func;
 			}
@@ -278,7 +290,7 @@ namespace lua
 			System.Func<T1, T2, T3, T4, TRet> func;
 
 			public FuncWrapper(System.Func<T1, T2, T3, T4, TRet> func)
-				: base(System.IntPtr.Zero)
+				: base(null)
 			{
 				this.func = func;
 			}
@@ -315,11 +327,11 @@ namespace lua
 
 
 		// create Lua func for invocation in C# [-1|0|-]
-		public static object CreateFuncObject(System.Type delegateType, System.IntPtr L)
+		public static object CreateFuncObject(System.Type delegateType, Lua L, int index)
 		{
 			var ctors = delegateType.GetConstructors();
 			var c = ctors[0];
-			return c.Invoke(null, new object[] { L });
+			return c.Invoke(null, new object[] { L, index });
 		}
 	}
 

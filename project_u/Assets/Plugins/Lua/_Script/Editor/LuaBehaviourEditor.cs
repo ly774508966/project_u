@@ -229,7 +229,7 @@ namespace lua
 			while (Api.lua_next(L, -2) != 0)
 			{
 				var key = Api.lua_tostring(L, -2);
-				var value = Lua.CsharpValueFrom(L, -1);
+				var value = L.ValueAt(-1);
 				keys.Add(key);
 				values.Add(value);
 				Api.lua_pop(L, 1);
@@ -261,7 +261,8 @@ namespace lua
 		void HandleUndoRedo()
 		{
 			var groupName = Undo.GetCurrentGroupName();
-			if (!string.IsNullOrEmpty(groupName) && groupName.StartsWith("LuaBehaviour."))
+			//Debug.Log(groupName);
+			if (!string.IsNullOrEmpty(groupName) && groupName.StartsWith("LuaBehaviour"))
 			{
 				Reload();
 				Repaint();
@@ -273,6 +274,7 @@ namespace lua
 		void OnEnable()
 		{
 			L = new Lua();
+			Undo.SetCurrentGroupName("LuaBehaviour");
 			Undo.undoRedoPerformed += HandleUndoRedo;
 			Reload();
 		}
@@ -372,7 +374,6 @@ namespace lua
 			{
 				serializedObject.ApplyModifiedProperties();
 				Reload();
- 				serializedObject.Update();
 			}
 			if (string.IsNullOrEmpty(lb.scriptName))
 			{

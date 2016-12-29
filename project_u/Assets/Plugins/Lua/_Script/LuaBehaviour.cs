@@ -148,7 +148,7 @@ namespace lua
 			}
 
 			// make	instance
-			handleToThis = Lua.MakeRef(L, this);
+			handleToThis = L.MakeRefTo(this);
 
 			Api.lua_newtable(L); // instance behaviour table
 
@@ -265,7 +265,7 @@ namespace lua
 			{
 				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 				if (handleToThis != null)
-					Lua.Unref(L, handleToThis);
+					L.Unref(handleToThis);
 			}
 		}
 
@@ -276,7 +276,7 @@ namespace lua
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
 			{
-				Lua.PushRef(L, handleToThis);
+				L.PushRef(handleToThis);
 				Api.lua_pushvalue(L, -3);
 				try
 				{
@@ -301,7 +301,7 @@ namespace lua
 			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
 				// stack: func, instance table
-				Lua.PushRef(L, handleToThis); // this csharp object
+				L.PushRef(handleToThis); // this csharp object
 				Api.lua_pushvalue(L, -3); // behaviour table
 				try
 				{

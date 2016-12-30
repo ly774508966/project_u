@@ -439,13 +439,9 @@ namespace lua
 			return 0;
 		}
 
-		public static byte[] DumpChunk(IntPtr L, bool strip = true)
+		// Caution! the dumpped chunk is not portable. you can not save it and run on another device.
+		public byte[] DumpChunk(bool strip = true)
 		{
-			if (Application.isEditor)
-			{
-				Debug.LogWarning("Caution! the dumpped chunk is not portable.");
-			}
-
 			if (!Api.lua_isfunction(L, -1))
 				return null;
 
@@ -1042,14 +1038,14 @@ namespace lua
 			return 1;
 		}
 
-		public static void ImportGlobal(IntPtr L, Type type, string name)
+		public void Import(Type type, string name)
 		{
-			Import(L, type);
+			Import(type);
 			Api.lua_setglobal(L, name);
 		}
 
 		// [ 0 | +1 | -]
-		public static bool Import(IntPtr L, Type type)
+		internal bool Import(Type type)
 		{
 			Api.lua_pushcclosure(L, Import, 0);
 			Api.lua_pushstring(L, type.AssemblyQualifiedName);
@@ -1064,18 +1060,17 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Import(lua_State L)
+		static int ImportInternal(lua_State L)
 		{
 			var host = CheckHost(L);
-
 			var typename = Api.luaL_checkstring(L, 1);
+			Debug.LogFormat("{0} imported.", typename);
 			var type = Type.GetType(typename);
 			if (type == null)
 			{
 				Api.lua_pushnil(L);
 				return 1;
 			}
-
 			if (host.PushObject(type, "class_meta") == 1) // TODO: opt, for type loaded, cache it
 			{
 				Api.lua_getmetatable(L, -1);
@@ -1088,6 +1083,15 @@ namespace lua
 
 				Api.lua_pop(L, 1);
 			}
+			return 1;
+		}
+
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		static int Import(lua_State L)
+		{
+			var typename = Api.luaL_checkstring(L, 1);
+			Api.luaL_requiref(L, typename, ImportInternal, 0);
 			return 1;
 		}
 

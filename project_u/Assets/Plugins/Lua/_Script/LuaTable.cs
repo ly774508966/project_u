@@ -21,13 +21,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-﻿using System.Collections;
+﻿using System.Collections.Generic;
 using System;
 using UnityEngine;
 
 namespace lua
 {
-	public class LuaTable
+	public class LuaTable : IDisposable
 	{
 		Lua L_;
 		int tableRef = Api.LUA_NOREF;
@@ -46,25 +46,33 @@ namespace lua
 			}
 		}
 
-		internal static LuaTable ReferenceTo(Lua L, int idx)
-		{
-			Debug.Assert(Api.lua_istable(L, idx));
-			return new LuaTable(L, idx);
-		}
-
-		~LuaTable()
+		public void Dispose()
 		{
 			if (L_.valid && tableRef != Api.LUA_NOREF)
 			{
+				foreach (var c in cached)
+				{
+					if (c.Value != null)
+					{
+						c.Value.Dispose();
+					}
+				}
+				cached.Clear();
 				L_.Unref(tableRef);
 			}
 		}
 
 		Lua CheckValid()
 		{
-			if (!L_.valid)
-				throw new System.InvalidOperationException("Lua vm already destroyed.");
-			return L_;
+			if (L_.valid)
+				return L_;
+			throw new System.InvalidOperationException("Lua vm already destroyed.");
+		}
+
+		public void Push()
+		{
+			var L = CheckValid();
+			L.PushRef(tableRef);
 		}
 
 		public int Length
@@ -122,40 +130,58 @@ namespace lua
 			}
 		}
 
-
-		public lua.LuaTable Invoke(string name, params object[] args)
+		public void Invoke(string name, params object[] args)
 		{
-			var L = CheckValid();
-
-			LuaTable ret = null;
-
-			L.PushRef(tableRef);
-			var top = Api.lua_gettop(L);
-			if (Api.lua_getfield(L, -1, name) == Api.LUA_TFUNCTION)
+			var f = Cache(name);
+			if (f != null)
 			{
-				Api.lua_pushvalue(L, -2);
-				for (int i = 0; i < args.Length; ++i)
-				{
-					L.PushValue(args[i]);
-				}
-				Lua.Call(L, 1 + args.Length, Api.LUA_MULTRET);
-				var nrets = Api.lua_gettop(L) - top;
-				if (nrets > 0)
-				{
-					Api.lua_createtable(L, nrets, 0);
-					for (int i = nrets; i >= 1; i--)
-					{
-						Api.lua_pushvalue(L, -i - 1); // value at -i - 1
-						Api.lua_seti(L, -2, nrets - i + 1);
-					}
-					ret = ReferenceTo(L, -1);
-					Api.lua_pop(L, 1);
-				}
+				f.Invoke(this, args);
 			}
-			Api.lua_settop(L, top - 1); // left nothing on stack
-			return ret;
 		}
 
+		public object Invoke1(string name, params object[] args)
+		{
+			var f = Cache(name);
+			if (f != null)
+			{
+				return f.Invoke1(this, args);
+			}
+			return null;
+		}
+
+		public LuaTable InvokeMultiRet(string name, params object[] args)
+		{
+			var f = Cache(name);
+			if (f != null)
+			{
+				return f.InvokeMultiRet(this, args);
+			}
+			return null;
+		}
+
+		Dictionary<string, LuaFunction> cached = new Dictionary<string, LuaFunction>();
+		LuaFunction Cache(string name)
+		{
+			LuaFunction f = null;
+			if (cached.TryGetValue(name, out f))
+				return f;
+			var L = CheckValid();
+			var top = Api.lua_gettop(L);
+			Push();
+			if (Api.lua_getfield(L, -1, name) == Api.LUA_TFUNCTION)
+			{
+				f = LuaFunction.MakeRefTo(L, -1);
+			}
+			cached[name] = f;
+			Api.lua_settop(L, top);
+			return f;
+		}
+
+		internal static LuaTable MakeRefTo(Lua L, int idx)
+		{
+			Debug.Assert(Api.lua_istable(L, idx));
+			return new LuaTable(L, idx);
+		}
 
 
 	}

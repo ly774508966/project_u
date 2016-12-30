@@ -97,7 +97,7 @@ namespace lua
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{
-				Lua.Call(L, 1, 2);
+				L.Call(1, 2);
 			}
 			catch (Exception e)
 			{
@@ -149,7 +149,7 @@ namespace lua
 			var refToOriginal = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX); // stack: func, table
 			try
 			{
-				Lua.Call(L, 1, 0);
+				L.Call(1, 0);
 			}
 			catch (Exception e)
 			{
@@ -167,13 +167,13 @@ namespace lua
 				// stack: table
 				try
 				{
-					Lua.LoadChunk(L, lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
+					L.LoadChunk(lb.GetInitChunk(), lb.scriptName + "_Init_Editor");
 					// stack: table, loaded chunk (emits _Init function)
-					Lua.Call(L, 0, 1); // run loaded chunk
+					L.Call(0, 1); // run loaded chunk
 					// stack: table, func
 					Api.lua_pushvalue(L, -2);
 					// stack: table, func, table
-					Lua.Call(L, 1, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{
@@ -201,7 +201,7 @@ namespace lua
 
 				try
 				{
-					Lua.Call(L, 2, 1);
+					L.Call(2, 1);
 				}
 				catch (Exception e)
 				{

@@ -156,7 +156,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
 			Assert.AreEqual(obj.test, Api.lua_tointeger(L, -1));
 			Api.lua_pop(L, 1);
@@ -177,7 +177,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
 			Assert.AreEqual(obj.test, Api.lua_tointeger(L, -1));
 			Api.lua_pop(L, 1);
@@ -202,7 +202,7 @@ namespace lua.test
 			L.PushRef(objRef);
 			try
 			{
-				Lua.Call(L, 1, 1);
+				L.Call(1, 1);
 			}
 			catch (System.Exception e)
 			{
@@ -225,7 +225,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
 			Assert.AreEqual(43, Api.lua_tointeger(L, -1));
 			Api.lua_pop(L, 1);
@@ -252,7 +252,7 @@ namespace lua.test
 			L.PushRef(objRef);
 			try
 			{
-				Lua.Call(L, 1, 1);
+				L.Call(1, 1);
 			}
 			catch (System.Exception e)
 			{
@@ -299,7 +299,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TSTRING, Api.lua_type(L, -1));
 			Assert.AreEqual("ret_TestString11", Api.lua_tostring(L, -1));
 			Api.lua_pop(L, 1);
@@ -333,7 +333,7 @@ namespace lua.test
 				}
 				L.PushRef(objRef); // push obj
 				Assert.True(Api.lua_isuserdata(L, -1));
-				Lua.Call(L, 1, 1); // call obj:func
+				L.Call(1, 1); // call obj:func
 				Api.lua_pop(L, 1); // pop ret
 				if (innerTop != Api.lua_gettop(L))
 				{
@@ -384,7 +384,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TSTRING, Api.lua_type(L, -1));
 			var ret = new TestRetValue();
 			Assert.AreEqual(ret.value, Api.lua_tostring(L, -1));
@@ -414,7 +414,7 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushValue(value);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TSTRING, Api.lua_type(L, -1));
 			Assert.AreEqual("10.020.030", Api.lua_tostring(L, -1));
 			Api.lua_pop(L, 1);
@@ -437,7 +437,7 @@ namespace lua.test
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			var obj = new TestClass();
 			L.PushValue(obj);
-			Lua.Call(L, 1, 0);
+			L.Call(1, 0);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L));
 			Assert.AreEqual(13, obj.test);
 
@@ -462,7 +462,7 @@ namespace lua.test
 				"end");
 			Api.lua_getglobal(L, "Test");
 			L.PushValue(testArray);
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			Assert.True(Api.lua_isuserdata(L, -1));
 			var obj = L.ObjectAt(-1);
 			Assert.AreEqual(testArray[4], obj);
@@ -490,7 +490,7 @@ namespace lua.test
 				"end");
 			Api.lua_getglobal(L, "Test");
 			L.PushValue(testArray);
-			Lua.Call(L, 1, 0);
+			L.Call(1, 0);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L));
 			Assert.AreEqual(42, testArray[4]);
 
@@ -509,7 +509,7 @@ namespace lua.test
 				"  return Vector3(1, 2, 3)\n" + 
 				"end");
 			Api.lua_getglobal(L, "TestCreateVector3");
-			Lua.Call(L, 0, 1);
+			L.Call(0, 1);
 			var v = (Vector3)L.ObjectAt(-1);
 			Assert.AreEqual(new Vector3(1f, 2f, 3f), v);
 			Api.lua_pop(L, 1);
@@ -532,7 +532,7 @@ namespace lua.test
 				"  return v.x + v.y\n" + 
 				"end");
 			Api.lua_getglobal(L, "TestCreateVector3");
-			Lua.Call(L, 0, 1);
+			L.Call(0, 1);
 			var v = Api.lua_tonumber(L, -1);
 			Assert.AreEqual(3.0, v);
 			Api.lua_pop(L, 1);
@@ -559,7 +559,7 @@ namespace lua.test
 				"  MyClass.value = 42\n" + 
 				"end");
 			Api.lua_getglobal(L, "Test");
-			Lua.Call(L, 0, 0);
+			L.Call(0, 0);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L));
 			Assert.AreEqual(42, MyClass.value);
 
@@ -579,7 +579,7 @@ namespace lua.test
 				"  Global_MyClass.value = 42\n" + 
 				"end");
 			Api.lua_getglobal(L, "Test");
-			Lua.Call(L, 0, 0);
+			L.Call(0, 0);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L));
 			Assert.AreEqual(42, MyClass.value);
 
@@ -600,7 +600,7 @@ namespace lua.test
 				"  UnityDebug.Log(42)\n" + 
 				"end");
 			Api.lua_getglobal(L, "Test");
-			Lua.Call(L, 0, 0);
+			L.Call(0, 0);
 
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
@@ -614,17 +614,17 @@ namespace lua.test
 			Api.lua_setglobal(L, "UnityDebug");
 			Api.luaL_dostring(L,
 				"function Test()\n" +
-				"  UnityDebug.Log('Hello UnityDebug')\n" + 
-				"  UnityDebug.Log(42)\n" + 
+//				"  UnityDebug.Log('Hello UnityDebug')\n" + 
+//				"  UnityDebug.Log(42)\n" + 
 				"  return 10\n"	+
 				"end");
 			Api.lua_getglobal(L, "Test");
 			var chunk = Lua.DumpChunk(L);
 			Assert.True(chunk != null && chunk.Length > 0);
 			Api.lua_pop(L, 1);
-			Lua.LoadChunk(L, chunk, "Test_LoadFromChunk");
+			L.LoadChunk(chunk, "Test_LoadFromChunk");
 			Assert.True(Api.lua_isfunction(L, -1));
-			Lua.Call(L, 0, 1);
+			L.Call(0, 1);
 			Assert.AreEqual(10, Api.lua_tonumber(L, -1));
 			Api.lua_pop(L, 1);
 
@@ -647,7 +647,7 @@ namespace lua.test
 
 			Api.lua_getglobal(L, "TestOutParam");
 			L.PushRef(objRef);
-			Lua.Call(L, 1, Api.LUA_MULTRET);
+			L.Call(1, Api.LUA_MULTRET);
 
 			Assert.AreEqual(20.0, Api.lua_tonumber(L, -4));
 			Assert.AreEqual(11.0, Api.lua_tonumber(L, -3));
@@ -665,14 +665,14 @@ namespace lua.test
 
 		public class SomeClass
 		{
-			public int MeCallYou(lua.FuncTools.Func<int> complete)
+			public int MeCallYou(lua.LuaFunction complete)
 			{
-				return complete.Invoke();
+				return (int)(long)complete.Invoke1();
 			}
 
-			public int MeCallYou2(lua.FuncTools.Func<int> complete)
+			public int MeCallYou2(lua.LuaFunction complete)
 			{
-				return complete.Invoke("called in MeCallYou2");
+				return (int)(long)complete.Invoke1(null, "called in MeCallYou2");
 			}
 
 			public int Call(int i)
@@ -695,10 +695,10 @@ namespace lua.test
 				L,
 				"function Test(obj)\n" +
 				" return obj:MeCallYou(function() \n" +
+//				"     local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" +
+//				"     Debug.Log('HERE')\n" +
 				"	  return 10\n" +
 				"	end)\n"	+
-//				"  return 10\n" + 
-//				"  return obj:Call(10)\n" + 
 				"end");
 			Assert.AreEqual(0, Api.lua_gettop(L));
 			Api.lua_getglobal(L, "Test");
@@ -706,7 +706,7 @@ namespace lua.test
 			{
 				Api.lua_pushvalue(L, -1);
 				L.PushRef(re);
-				Lua.Call(L, 1, 1);
+				L.Call(1, 1);
 				Assert.AreEqual(10.0, Api.lua_tonumber(L, -1));
 				Api.lua_pop(L, 1);
 			}
@@ -715,58 +715,45 @@ namespace lua.test
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
 //*/
-/*
-		[Test]
-		public void TestWrapperToLuaFuncToolsFunc()
-		{
-			Api.lua_settop(L, 0);
+//*
 
-			var a = new SomeClass();
-			var val = a.MeCallYou2(lua.FuncTools.Wrap<string, int>(
-				(str) => {
-					Debug.Log(str);
-					return 10;
-				}));
-			Assert.AreEqual(10, val);
-
-			Assert.AreEqual(0, Api.lua_gettop(L));
-
-		}
 //*/
 
-/*
+//*
 		[Test]
 		public void TestRunScript()
 		{
 			Api.lua_settop(L, 0);
 
-			var runMe = (lua.LuaTable)L.RunScript1("RunMe");
+			using (var runMe = (lua.LuaTable)L.RunScript1("RunMe"))
+			{
+				Assert.AreEqual(0, Api.lua_gettop(L));
 
-			Assert.AreEqual(0, Api.lua_gettop(L));
+				using (var ret = (LuaTable)runMe.InvokeMultiRet("MyFunc", "Hello"))
+				{
+					Assert.AreEqual(0, Api.lua_gettop(L));
+
+					Assert.AreEqual(4, ret.Length);
+					Assert.AreEqual(1, (long)ret[1]);
+					Assert.AreEqual(2, (long)ret[2]);
+					Assert.AreEqual(3, (long)ret[3]);
+					Assert.AreEqual("Hello", (string)ret[4]);
+
+					// set value in runMe, and re RunScript on RunMe, the value should lost
+					runMe["TestValue"] = "Test Value";
+					runMe[25] = 7788;
+					Assert.AreEqual("Test Value", runMe["TestValue"]);
+					Assert.AreEqual(7788, runMe[25]);
+				}
+			}
 
 
-			var ret = runMe.Invoke("MyFunc", "Hello");
-			Assert.AreEqual(0, Api.lua_gettop(L));
-
-			Assert.AreEqual(4, ret.Length);
-			Assert.AreEqual(1, ret[1]);
-			Assert.AreEqual(2, ret[2]);
-			Assert.AreEqual(3, ret[3]);
-			Assert.AreEqual("Hello", (string)ret[4]);
-
-			// set value in runMe, and re RunScript on RunMe, the value should lost
-			runMe["TestValue"] = "Test Value";
-			runMe[25] = 7788;
-			Assert.AreEqual("Test Value", runMe["TestValue"]);
-			Assert.AreEqual(7788, runMe[25]);
-
-
-			runMe = (lua.LuaTable)L.RunScript1("RunMe");
-
-			Assert.AreEqual(0, Api.lua_gettop(L));
-
-			Assert.AreEqual(null, runMe["TestValue"]);
-			Assert.AreEqual(null, runMe[25]);
+			using (var runMe = (lua.LuaTable)L.RunScript1("RunMe"))
+			{
+				Assert.AreEqual(0, Api.lua_gettop(L));
+				Assert.AreEqual(null, runMe["TestValue"]);
+				Assert.AreEqual(null, runMe[25]);
+			}
 
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
@@ -776,36 +763,41 @@ namespace lua.test
 		{
 			Api.lua_settop(L, 0);
 
-			var runMe = (lua.LuaTable)L.Require("RunMe");
-			Assert.AreEqual(0, Api.lua_gettop(L));
+			using (var runMe = (lua.LuaTable)L.Require("RunMe"))
+			{
+				Assert.AreEqual(0, Api.lua_gettop(L));
 
-			var ret = runMe.Invoke("MyFunc", "Hello");
+				using (var ret = (LuaTable)runMe.InvokeMultiRet("MyFunc", "Hello"))
+				{
+					Assert.AreEqual(0, Api.lua_gettop(L));
 
-			Assert.AreEqual(0, Api.lua_gettop(L));
+					Assert.AreEqual(4, ret.Length);
 
-			Assert.AreEqual(4, ret.Length);
+					Assert.AreEqual(0, Api.lua_gettop(L));
 
-			Assert.AreEqual(0, Api.lua_gettop(L));
+					Assert.AreEqual(1, (long)ret[1]);
+					Assert.AreEqual(2, (long)ret[2]);
+					Assert.AreEqual(3, (long)ret[3]);
 
-			Assert.AreEqual(1, ret[1]);
-			Assert.AreEqual(2, ret[2]);
-			Assert.AreEqual(3, ret[3]);
+					Assert.AreEqual(0, Api.lua_gettop(L));
 
-			Assert.AreEqual(0, Api.lua_gettop(L));
+					Assert.AreEqual("Hello", (string)ret[4]);
 
-			Assert.AreEqual("Hello", (string)ret[4]);
-
-			Assert.AreEqual(0, Api.lua_gettop(L));
+					Assert.AreEqual(0, Api.lua_gettop(L));
 
 
-			// set value in runMe, and re Require on RunMe, the value should be there
-			runMe["TestValue"] = "Test Value";
-			runMe[25] = 7788;
-			Assert.AreEqual("Test Value", runMe["TestValue"]);
+					// set value in runMe, and re Require on RunMe, the value should be there
+					runMe["TestValue"] = "Test Value";
+					runMe[25] = 7788;
+					Assert.AreEqual("Test Value", runMe["TestValue"]);
+				}
+			}
 
-			runMe = (lua.LuaTable)L.Require("RunMe");
-			Assert.AreEqual("Test Value", runMe["TestValue"]);
-			Assert.AreEqual(7788, runMe[25]);
+			using (var runMe = (lua.LuaTable)L.Require("RunMe"))
+			{
+				Assert.AreEqual("Test Value", runMe["TestValue"]);
+				Assert.AreEqual(7788, runMe[25]);
+			}
 
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
@@ -832,7 +824,7 @@ namespace lua.test
 			Assert.True(Api.lua_isfunction(L, -1));
 			L.PushValue(bytes);
 			Assert.True(Api.lua_isstring(L, -1));
-			Lua.Call(L, 1, 1);
+			L.Call(1, 1);
 			var outBytes = Api.lua_tobytes(L, -1);
 			Assert.AreEqual(30, outBytes.Length);
 			for (int i = 0; i < bytes.Length; ++i)

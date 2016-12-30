@@ -32,8 +32,6 @@ using lua_State = System.IntPtr;
 
 namespace lua
 {
-
-
 	public class Api
 	{
 #if UNITY_EDITOR || UNITY_ANDROID
@@ -41,8 +39,6 @@ namespace lua
 #elif UNITY_IPHONE
 		public const string LIBNAME = "__Internal";
 #endif
-
-
 
 		public const int LUA_MULTRET = -1;
 

@@ -139,7 +139,7 @@ namespace lua
 				Api.luaL_dostring(L, kLuaStub_ReplaceSearcher);
 				Debug.Assert(Api.lua_isfunction(L, -1));
 				Api.lua_pushcclosure(L, Searcher, 0);
-				Call(L, 1, 0);
+				Call(1, 0);
 			}
 			catch (Exception e)
 			{
@@ -163,16 +163,16 @@ namespace lua
 		public void RunScript(string scriptName)
 		{
 			string scriptPath;
-			LoadChunkFromFile(L, scriptName, out scriptPath);
-			Call(L, 0, 0);
+			LoadChunkFromFile(scriptName, out scriptPath);
+			Call(0, 0);
 		}
 
 		public object RunScript1(string scriptName)
 		{
 			string scriptPath;
 			var top = Api.lua_gettop(L);
-			LoadChunkFromFile(L, scriptName, out scriptPath);
-			Call(L, 0, 1);
+			LoadChunkFromFile(scriptName, out scriptPath);
+			Call(0, 1);
 			var ret = ValueAt(-1);
 			Api.lua_settop(L, top);	// should left nothing on stack
 			return ret;
@@ -221,7 +221,7 @@ namespace lua
 			string scriptPath = string.Empty;
 			try
 			{
-				LoadChunkFromFile(L, scriptName, out scriptPath);
+				host.LoadChunkFromFile(scriptName, out scriptPath);
 				host.PushValue(scriptPath);
 			}
 			catch (Exception e)
@@ -299,32 +299,33 @@ namespace lua
 			return www.bytes;
 		}
 
-		static void LoadChunkFromFile(IntPtr L, string scriptName, out string scriptPath)
+		void LoadChunkFromFile(string scriptName, out string scriptPath)
 		{
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
 			{
 				throw new Exception("0 bytes loaded");
 			}
-			LoadChunk(L, bytes, scriptName);
+			LoadChunk(bytes, scriptName);
 		}
 
-		static void LoadScriptInternal(IntPtr L, string scriptName, int nret, out string scriptPath)
+		void LoadScriptInternal(string scriptName, int nret, out string scriptPath)
 		{
-			LoadChunkFromFile(L, scriptName, out scriptPath);
-			Call(L, 0, nret);
+			LoadChunkFromFile(scriptName, out scriptPath);
+			Call(0, nret);
 		}
 
 		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		internal static int LoadScript(lua_State L)
 		{
+			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
 			var top = Api.lua_gettop(L);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, Api.LUA_MULTRET, out scriptPath);
+				host.LoadScriptInternal(scriptName, Api.LUA_MULTRET, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -339,11 +340,12 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		internal static int LoadScript1(lua_State L)
 		{
+			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, 1, out scriptPath);
+				host.LoadScriptInternal(scriptName, 1, out scriptPath);
 			}
 			catch (Exception e)
 			{
@@ -362,12 +364,11 @@ namespace lua
 		public static int LoadScript1InEditor(lua_State L)
 		{
 			var host = CheckHost(L);
-
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
 			{
 				string scriptPath;
-				LoadScriptInternal(L, scriptName, 1, out scriptPath);
+				host.LoadScriptInternal(scriptName, 1, out scriptPath);
 				host.PushValue(scriptPath);
 			}
 			catch (Exception e)
@@ -403,7 +404,7 @@ namespace lua
 			public int pos;
 		}
 
-		public static void LoadChunk(IntPtr L, byte[] bytes, string chunkname, string mode = "bt")
+		public void LoadChunk(byte[] bytes, string chunkname, string mode = "bt")
 		{
 			Debug.Assert(bytes != null);
 
@@ -561,7 +562,9 @@ namespace lua
 				case Api.LUA_TSTRING:
 					return Api.lua_tostring(L, idx);
 				case Api.LUA_TTABLE:
-					return LuaTable.ReferenceTo(this, idx);
+					return LuaTable.MakeRefTo(this, idx);
+				case Api.LUA_TFUNCTION:
+					return LuaFunction.MakeRefTo(this, idx);
 				case Api.LUA_TUSERDATA:
 					return ObjectAt(idx);
 				default:
@@ -620,7 +623,9 @@ namespace lua
 				case Api.LUA_TLIGHTUSERDATA:
 					return (type == typeof(System.IntPtr) || type == typeof(System.UIntPtr));
 				case Api.LUA_TFUNCTION:
-					return typeof(lua.FuncTools.FuncBase).IsAssignableFrom(type);
+					return (type == typeof(LuaFunction));
+				case Api.LUA_TTABLE:
+					return (type == typeof(LuaTable));
 				case Api.LUA_TNIL:
 					if (arg.IsOut) // if is out, we can pass nil in
 					{
@@ -664,14 +669,16 @@ namespace lua
 			return null;
 		}
 
-		object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs)
+		object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs, out IDisposable[] disposableArgs)
 		{
 			if (args == null || args.Length == 0)
 			{
+				disposableArgs = null;
 				return csharpArgs_NoArgs;
 			}
 			Api.Assert(L, args.Length == numArgs - argStart + 1, "Different count of arguments.");
 			var actualArgs = new object[numArgs - argStart + 1];
+			disposableArgs = new IDisposable[actualArgs.Length];
 			for (int i = argStart; i <= numArgs; ++i)
 			{
 				var idx = i - argStart;
@@ -700,9 +707,15 @@ namespace lua
 					case Api.LUA_TUSERDATA:
 						actualArgs[idx] = ObjectAt(i);
 						break;
+					case Api.LUA_TTABLE:
+						var t = LuaTable.MakeRefTo(this, i);
+						disposableArgs[idx] = t;
+						actualArgs[idx] = t;
+						break;
 					case Api.LUA_TFUNCTION:
-						var methodObj = FuncTools.CreateFuncObject(type, this, i);
-						actualArgs[idx] = methodObj;
+						var f = LuaFunction.MakeRefTo(this, i);
+						disposableArgs[idx] = f;
+						actualArgs[idx] = f;
 						break;	
 					case Api.LUA_TNIL:
 						if (arg.IsOut)
@@ -921,10 +934,20 @@ namespace lua
 			try
 			{
 				var top = Api.lua_gettop(L);
-				var actualArgs = host.ArgsFrom(parameters, argStart, numArgs);
+				IDisposable[] disposableArgs;
+				var actualArgs = host.ArgsFrom(parameters, argStart, numArgs, out disposableArgs);
 				Api.Assert(L, top == Api.lua_gettop(L), "stack changed after converted args from lua.");
 
 				var retVal = method.Invoke(target, actualArgs);
+
+				if (disposableArgs != null)
+				{
+					foreach (var d in disposableArgs)
+					{
+						if (d != null) d.Dispose();
+					}
+				}
+
 				int outValues = 0;
 				if (retVal != null)
 				{
@@ -995,7 +1018,16 @@ namespace lua
 				var ctor = (System.Reflection.ConstructorInfo)method;
 				try
 				{
-					host.PushObject(ctor.Invoke(host.ArgsFrom(parameters, 2, numArgs)));
+					IDisposable[] disposableArgs;
+					var args = host.ArgsFrom(parameters, 2, numArgs, out disposableArgs);
+					host.PushObject(ctor.Invoke(args));
+					if (disposableArgs != null)
+					{
+						foreach (var d in disposableArgs)
+						{
+							if (d != null) d.Dispose();
+						}
+					}
 				}
 				catch (Exception e)
 				{
@@ -1432,7 +1464,8 @@ namespace lua
 			Api.luaL_traceback(L, L, err, 0);
 			return 1;
 		}
-		public static void Call(IntPtr L, int nargs, int nresults)
+
+		public void Call(int nargs, int nresults)
 		{
 			var stackTop = Api.lua_gettop(L) - nargs - 1; // function and args
 
@@ -1451,7 +1484,6 @@ namespace lua
 				Api.lua_remove(L, stackTop + 1); // remove err func
 			}
 		}
-
 
 		public static string DebugStack(lua_State L)
 		{

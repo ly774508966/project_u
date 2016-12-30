@@ -122,7 +122,7 @@ namespace lua
 			return 1 << (int)m;
 		}
 
-		object handleToThis;
+		int handleToThis = Api.LUA_NOREF;
 		bool scriptLoaded_ = false;
 		bool scriptLoaded
 		{
@@ -148,13 +148,12 @@ namespace lua
 			}
 
 			// make	instance
-			handleToThis = Lua.MakeRef(L, this);
+			handleToThis = L.MakeRefTo(this);
 
 			Api.lua_newtable(L); // instance behaviour table
 
 			// ref instance behaviour table
-			Api.lua_pushvalue(L, -1);
-			luaBehaviourRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+			luaBehaviourRef = L.MakeRefAt(-1);
 
 		
 			// meta
@@ -215,7 +214,7 @@ namespace lua
 			}
 		}
 
-		void RunInitFuncOnBehaviourTable(IntPtr L)
+		void RunInitFuncOnBehaviourTable(Lua L)
 		{
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// Behaviour._Init hides Script._Init
@@ -225,7 +224,7 @@ namespace lua
 				Api.lua_pushvalue(L, -2);
 				try
 				{
-					Lua.Call(L, 1, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{
@@ -261,11 +260,11 @@ namespace lua
 		void OnDestroy()
 		{
 			SendLuaMessage(Message.OnDestroy);
-			if (L != null)
+			if (L.valid)
 			{
 				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-				if (handleToThis != null)
-					Lua.Unref(L, handleToThis);
+				if (handleToThis != Api.LUA_NOREF)
+					L.Unref(handleToThis);
 			}
 		}
 
@@ -276,11 +275,11 @@ namespace lua
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
 			{
-				Lua.PushRef(L, handleToThis);
+				L.PushRef(handleToThis);
 				Api.lua_pushvalue(L, -3);
 				try
 				{
-					Lua.Call(L, 2, 0);
+					L.Call(2, 0);
 				}
 				catch (Exception e)
 				{
@@ -301,11 +300,11 @@ namespace lua
 			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
 				// stack: func, instance table
-				Lua.PushRef(L, handleToThis); // this csharp object
+				L.PushRef(handleToThis); // this csharp object
 				Api.lua_pushvalue(L, -3); // behaviour table
 				try
 				{
-					Lua.Call(L, 2, 0);
+					L.Call(2, 0);
 				}
 				catch (Exception e)
 				{
@@ -318,14 +317,14 @@ namespace lua
 		[SerializeField]
 		[HideInInspector]
 		byte[] _Init;
-		bool LoadInitFuncToBehaviourTable(IntPtr L)
+		bool LoadInitFuncToBehaviourTable(Lua L)
 		{
 			if (_Init == null || _Init.Length == 0) return false;
 			try
 			{
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-				Lua.LoadChunk(L, _Init, scriptName + "_Init");
-				Lua.Call(L, 0, 1); // run loaded chunk
+				L.LoadChunk(_Init, scriptName + "_Init");
+				L.Call(0, 1); // run loaded chunk
 				Api.lua_setfield(L, -2, "_Init");
 				Api.lua_pop(L, 1);  // pop behaviour table
 				return true;

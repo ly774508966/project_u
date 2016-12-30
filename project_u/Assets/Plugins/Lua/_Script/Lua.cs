@@ -502,7 +502,7 @@ namespace lua
 		}
 
 
-		public object MakeRefTo(object obj)
+		public int MakeRefTo(object obj)
 		{
 			Debug.Assert(obj != null);
 			var type = obj.GetType();
@@ -514,23 +514,21 @@ namespace lua
 		}
 
 
-		public object MakeRefAt(int index)
+		public int MakeRefAt(int index)
 		{
 			Api.lua_pushvalue(L, index);
 			var refVal = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
 			return refVal;
 		}
 
-		public void PushRef(object objReference)
+		public void PushRef(int objReference)
 		{
-			Debug.Assert(objReference is int);
-			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, (int)objReference);
+			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, objReference);
 		}
 
-		public void Unref(object objReference)
+		public void Unref(int objReference)
 		{
-			Debug.Assert(objReference is int);
-			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, (int)objReference);
+			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, objReference);
 		}
 
 		public object ValueAt(int idx)
@@ -827,6 +825,7 @@ namespace lua
 			Lua host = CheckHost(L);
 			var isInvokingFromClass = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
 			var obj = host.ObjectAt(Api.lua_upvalueindex(2));
+			Api.Assert(L, obj != null, "Invoking target not found at upvalueindex(2)");
 			var methodName = Api.luaL_checkstring(L, Api.lua_upvalueindex(3));
 
 			int[] luaArgTypes = luaArgTypes_NoArgs;
@@ -870,10 +869,6 @@ namespace lua
 			System.Type type = null;
 			if (isInvokingFromClass)
 			{
-				if (obj == null)
-				{
-					Debug.LogError("obj is null");
-				}
 				type = (System.Type)obj;
 				Api.Assert(L, invokingStaticMethod, string.Format("Invoking static method {0} from class {1} with incorrect syntax", methodName, type.ToString()));
 			}
@@ -892,7 +887,7 @@ namespace lua
 				var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
 				foreach (var member in members)
 				{
-					Api.Assert(L, member.MemberType == System.Reflection.MemberTypes.Method);
+					Api.Assert(L, member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
 					var m = (System.Reflection.MethodInfo)member;
 					if (m.IsStatic)
 					{
@@ -908,7 +903,7 @@ namespace lua
 					{
 						CacheMethod(L, type, mangledName, m);
 						method = m;
-						break;
+						break;  // found one, break
 					}
 				}
 				Api.Assert(L, method != null, string.Format("No corresponding csharp method for {0}", GetLuaInvokingSigniture(methodName, luaArgTypes)));
@@ -919,7 +914,10 @@ namespace lua
 			}
 			try
 			{
+				var top = Api.lua_gettop(L);
 				var actualArgs = host.ArgsFrom(parameters, argStart, numArgs);
+				Api.Assert(L, top == Api.lua_gettop(L), "stack changed after converted args from lua.");
+
 				var retVal = method.Invoke(target, actualArgs);
 				int outValues = 0;
 				if (retVal != null)
@@ -1012,6 +1010,7 @@ namespace lua
 			Api.lua_setglobal(L, name);
 		}
 
+		// [ 0 | +1 | -]
 		public static bool Import(IntPtr L, Type type)
 		{
 			Api.lua_pushcclosure(L, Import, 0);
@@ -1039,7 +1038,7 @@ namespace lua
 				return 1;
 			}
 
-			if (host.PushObject(type, type.AssemblyQualifiedName) == 1)
+			if (host.PushObject(type, "class_meta") == 1) // TODO: opt, for type loaded, cache it
 			{
 				Api.lua_getmetatable(L, -1);
 
@@ -1212,13 +1211,14 @@ namespace lua
 		static bool IsIndexingClassObject(IntPtr L)
 		{
 			var isIndexingClassObject = false;
+			var top = Api.lua_gettop(L);
 			Api.lua_getmetatable(L, 1);
 			if (Api.lua_istable(L, -1))
 			{
 				Api.lua_rawgeti(L, -1, 1);
 				isIndexingClassObject = Api.lua_toboolean(L, -1);
-				Api.lua_pop(L, 2);
 			}
+			Api.lua_settop(L, top);
 			return isIndexingClassObject;
 		}
 

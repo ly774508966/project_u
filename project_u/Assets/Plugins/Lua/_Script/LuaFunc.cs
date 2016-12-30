@@ -31,7 +31,7 @@ namespace lua
 		public class FuncBase
 		{
 			protected Lua L_;
-			protected object funcRef;
+			protected int funcRef = Api.LUA_NOREF;
 
 			protected FuncBase(Lua L, int index = -1)
 			{
@@ -46,7 +46,7 @@ namespace lua
 
 			~FuncBase()
 			{
-				if (L_.valid)
+				if (L_.valid && funcRef != Api.LUA_NOREF)
 					L_.Unref(funcRef);
 			}
 

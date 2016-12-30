@@ -30,12 +30,12 @@ namespace lua
 	public class LuaTable
 	{
 		Lua L_;
-		object refToTable;
+		int tableRef = Api.LUA_NOREF;
 
 		LuaTable(Lua L, int idx)
 		{
 			L_ = L;
-			refToTable = L.MakeRefAt(idx);
+			tableRef = L.MakeRefAt(idx);
 		}
 
 		public bool valid
@@ -54,9 +54,9 @@ namespace lua
 
 		~LuaTable()
 		{
-			if (L_.valid)
+			if (L_.valid && tableRef != Api.LUA_NOREF)
 			{
-				L_.Unref(refToTable);
+				L_.Unref(tableRef);
 			}
 		}
 
@@ -73,7 +73,7 @@ namespace lua
 			{
 				var L = CheckValid();
 				var ret = 0;
-				L.PushRef(refToTable);
+				L.PushRef(tableRef);
 				ret = Api.lua_len(L, -1);
 				Api.lua_pop(L, 2);
 				return ret;
@@ -85,7 +85,7 @@ namespace lua
 			get
 			{
 				var L = CheckValid();
-				L.PushRef(refToTable);
+				L.PushRef(tableRef);
 				Api.lua_geti(L, -1, index);
 				var ret = L.ValueAt(-1);
 				Api.lua_pop(L, 2);
@@ -94,7 +94,7 @@ namespace lua
 			set
 			{
 				var L = CheckValid();
-				L.PushRef(refToTable);
+				L.PushRef(tableRef);
 				L.PushValue(value);
 				Api.lua_seti(L, -2, index);
 				Api.lua_pop(L, 1);
@@ -106,7 +106,7 @@ namespace lua
 			get
 			{
 				var L = CheckValid();
-				L.PushRef(refToTable);
+				L.PushRef(tableRef);
 				Api.lua_getfield(L, -1, index);
 				var ret = L.ValueAt(-1);
 				Api.lua_pop(L, 2);
@@ -115,7 +115,7 @@ namespace lua
 			set
 			{
 				var L = CheckValid();
-				L.PushRef(refToTable);
+				L.PushRef(tableRef);
 				L.PushValue(value);
 				Api.lua_setfield(L, -2, index);
 				Api.lua_pop(L, 1);
@@ -129,7 +129,7 @@ namespace lua
 
 			LuaTable ret = null;
 
-			L.PushRef(refToTable);
+			L.PushRef(tableRef);
 			var top = Api.lua_gettop(L);
 			if (Api.lua_getfield(L, -1, name) == Api.LUA_TFUNCTION)
 			{

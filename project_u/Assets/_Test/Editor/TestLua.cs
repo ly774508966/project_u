@@ -94,7 +94,7 @@ namespace lua.test
 	{
 		Lua L;
 		TestClass obj;
-		object objRef;
+		int objRef;
 
 
 
@@ -674,6 +674,15 @@ namespace lua.test
 			{
 				return complete.Invoke("called in MeCallYou2");
 			}
+
+			public int Call(int i)
+			{
+				return i;
+			}
+
+			~SomeClass()
+			{
+			}
 		}
 //*
 		[Test]
@@ -688,10 +697,12 @@ namespace lua.test
 				" return obj:MeCallYou(function() \n" +
 				"	  return 10\n" +
 				"	end)\n"	+
+//				"  return 10\n" + 
+//				"  return obj:Call(10)\n" + 
 				"end");
 			Assert.AreEqual(0, Api.lua_gettop(L));
 			Api.lua_getglobal(L, "Test");
-			for (int i = 0; i < 1000; ++i)
+			for (int i = 0; i < 10000; ++i)
 			{
 				Api.lua_pushvalue(L, -1);
 				L.PushRef(re);

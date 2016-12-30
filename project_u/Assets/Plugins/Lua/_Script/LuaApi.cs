@@ -545,7 +545,10 @@ namespace lua
 		public static extern int luaL_newmetatable(IntPtr L, string tname);
 		[DllImport(LIBNAME)]
 		public static extern int luaL_setmetatable(IntPtr L, string tname);
-
+		[DllImport(LIBNAME)]
+		public static extern IntPtr luaL_testudata(IntPtr L, int ud, string tname);
+		[DllImport(LIBNAME)]
+		public static extern IntPtr luaL_checkudata(IntPtr L, int ud, string tname);
 
 		public static void luaL_newlibtable(IntPtr L, luaL_Reg[] l)
 		{

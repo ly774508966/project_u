@@ -122,7 +122,7 @@ namespace lua
 			return 1 << (int)m;
 		}
 
-		object handleToThis;
+		int handleToThis = Api.LUA_NOREF;
 		bool scriptLoaded_ = false;
 		bool scriptLoaded
 		{
@@ -153,8 +153,7 @@ namespace lua
 			Api.lua_newtable(L); // instance behaviour table
 
 			// ref instance behaviour table
-			Api.lua_pushvalue(L, -1);
-			luaBehaviourRef = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
+			luaBehaviourRef = L.MakeRefAt(-1);
 
 		
 			// meta

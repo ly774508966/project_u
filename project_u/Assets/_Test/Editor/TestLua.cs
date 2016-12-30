@@ -518,6 +518,27 @@ namespace lua.test
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
 
+		[Test]
+		public void TestImportShouldExecuteOnlyOnce()
+		{
+			Api.lua_settop(L, 0);
+
+			var stackTop = Api.lua_gettop(L);
+			Api.luaL_dostring(L,
+				"return function()\n" +
+				"  Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine')\n" +
+				"  return Vector3(1, 2, 3)\n" + 
+				"end");
+			for (int i = 0; i < 10000; ++i)
+			{
+				Api.lua_pushvalue(L, -1);
+				L.Call(0, 1);
+				Api.lua_pop(L, 1);
+			}
+			Api.lua_pop(L, 1);
+			Assert.AreEqual(0, Api.lua_gettop(L));
+		}
+
 
 		[Test]
 		public void TestCreateCsharpObjectFromLua_AndAccessIt()
@@ -573,7 +594,7 @@ namespace lua.test
 			Api.lua_settop(L, 0);
 
 			var stackTop = Api.lua_gettop(L);
-			Lua.ImportGlobal(L, typeof(MyClass), "Global_MyClass");
+			L.ImportGlobal(typeof(MyClass), "Global_MyClass");
 			Api.luaL_dostring(L,
 				"function Test()\n" +
 				"  Global_MyClass.value = 42\n" + 
@@ -714,7 +735,10 @@ namespace lua.test
 			Api.lua_pop(L, 1);
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
+
 //*/
+
+
 //*
 
 //*/

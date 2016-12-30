@@ -594,7 +594,7 @@ namespace lua.test
 			Api.lua_settop(L, 0);
 
 			var stackTop = Api.lua_gettop(L);
-			L.ImportGlobal(typeof(MyClass), "Global_MyClass");
+			L.Import(typeof(MyClass), "Global_MyClass");
 			Api.luaL_dostring(L,
 				"function Test()\n" +
 				"  Global_MyClass.value = 42\n" + 
@@ -613,8 +613,7 @@ namespace lua.test
 		{
 			Api.lua_settop(L, 0);
 
-			Lua.Import(L, typeof(UnityEngine.Debug));
-			Api.lua_setglobal(L, "UnityDebug");
+			L.Import(typeof(UnityEngine.Debug), "UnityDebug");
 			Api.luaL_dostring(L,
 				"function Test()\n" +
 				"  UnityDebug.Log('Hello UnityDebug')\n" + 
@@ -631,24 +630,32 @@ namespace lua.test
 		{
 			Api.lua_settop(L, 0);
 
-			Lua.Import(L, typeof(UnityEngine.Debug));
-			Api.lua_setglobal(L, "UnityDebug");
+			L.Import(typeof(UnityEngine.Debug), "UnityDebug");
 			Api.luaL_dostring(L,
-				"function Test()\n" +
-//				"  UnityDebug.Log('Hello UnityDebug')\n" + 
-//				"  UnityDebug.Log(42)\n" + 
+				"return function()\n" +
+//				"  UnityDebug.Log('Hello UnityDebug')\n" +
+//				"  UnityDebug.Log(42)\n" +
 				"  return 10\n"	+
 				"end");
-			Api.lua_getglobal(L, "Test");
-			var chunk = Lua.DumpChunk(L);
+
+			var chunk = L.DumpChunk();
 			Assert.True(chunk != null && chunk.Length > 0);
-			Api.lua_pop(L, 1);
 			L.LoadChunk(chunk, "Test_LoadFromChunk");
 			Assert.True(Api.lua_isfunction(L, -1));
 			L.Call(0, 1);
 			Assert.AreEqual(10, Api.lua_tonumber(L, -1));
 			Api.lua_pop(L, 1);
 
+			
+			for (int i = 0; i < 10000; ++i)
+			{
+				chunk = L.DumpChunk();
+				L.LoadChunk(chunk, "Test_LoadFromChunk");
+				L.Call(0, 1);
+				Api.lua_pop(L, 1);
+			}
+
+			Api.lua_pop(L, 1);
 			Assert.AreEqual(0, Api.lua_gettop(L));
 
 		}
@@ -661,12 +668,11 @@ namespace lua.test
 
 			var stackTop = Api.lua_gettop(L);
 			Api.luaL_dostring(L,
-				"function TestOutParam(obj)\n" +
+				"return function(obj)\n" +
 				"  ret, t1, t2, t3 = obj:TestOutParam(10, nil, nil, 10)\n" + 
 				"  return ret, t1, t2, t3\n" +
 				"end");
 
-			Api.lua_getglobal(L, "TestOutParam");
 			L.PushRef(objRef);
 			L.Call(1, Api.LUA_MULTRET);
 

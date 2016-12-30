@@ -439,13 +439,9 @@ namespace lua
 			return 0;
 		}
 
-		public static byte[] DumpChunk(IntPtr L, bool strip = true)
+		// Caution! the dumpped chunk is not portable. you can not save it and run on another device.
+		public byte[] DumpChunk(bool strip = true)
 		{
-			if (Application.isEditor)
-			{
-				Debug.LogWarning("Caution! the dumpped chunk is not portable.");
-			}
-
 			if (!Api.lua_isfunction(L, -1))
 				return null;
 
@@ -1042,14 +1038,14 @@ namespace lua
 			return 1;
 		}
 
-		public void ImportGlobal(Type type, string name)
+		public void Import(Type type, string name)
 		{
 			Import(type);
 			Api.lua_setglobal(L, name);
 		}
 
 		// [ 0 | +1 | -]
-		public bool Import(Type type)
+		internal bool Import(Type type)
 		{
 			Api.lua_pushcclosure(L, Import, 0);
 			Api.lua_pushstring(L, type.AssemblyQualifiedName);

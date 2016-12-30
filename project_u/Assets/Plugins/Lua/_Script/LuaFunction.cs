@@ -29,7 +29,7 @@ namespace lua
 			throw new System.InvalidOperationException("Lua vm already destroyed.");
 		}
 
-		public void Push()
+		internal void Push()
 		{
 			var L = CheckValid();
 			L.PushRef(funcRef);

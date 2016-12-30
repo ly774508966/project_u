@@ -10,9 +10,8 @@ namespace lua
 
 		public static ScriptLoader GetLoader()
 		{
-			var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-			var methods = assemblies
-				.SelectMany(a => a.GetTypes())
+			var methods = Assembly.Load("Assembly-CSharp").GetTypes()
+				.Union(Assembly.Load("Assembly-CSharp-firstpass").GetTypes())
 				.SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public))
 				.Where(m => m.GetCustomAttributes(typeof(LuaScriptLoaderAttribute), false).Length > 0)
 				.ToArray();

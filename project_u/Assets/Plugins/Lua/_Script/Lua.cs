@@ -27,6 +27,12 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using AOT;
 
+using lua_KContext = System.IntPtr;
+using lua_Integer = System.Int64;
+using lua_Number = System.Double;
+using size_t = System.UIntPtr;
+using lua_State = System.IntPtr;
+
 // NEVER throw Lua exception in a C# native function
 // NEVER throw C# exception in lua_CFunction
 // catch all C# exception in any lua_CFunction and ThrowLuaException instead
@@ -188,7 +194,7 @@ namespace lua
 			Api.lua_setglobal(L, kHost);
 		}
 
-		static Lua CheckHost(IntPtr L)
+		static Lua CheckHost(lua_State L)
 		{
 			Lua host = null;
 			var top = Api.lua_gettop(L);
@@ -207,7 +213,7 @@ namespace lua
 		// 
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Searcher(IntPtr L)
+		static int Searcher(lua_State L)
 		{
 			var host = CheckHost(L);
 
@@ -226,7 +232,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int OpenCsharpLib(IntPtr L)
+		static int OpenCsharpLib(lua_State L)
 		{
 			var regs = new Api.luaL_Reg[]
 			{
@@ -311,7 +317,7 @@ namespace lua
 
 		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int LoadScript(IntPtr L)
+		internal static int LoadScript(lua_State L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			var top = Api.lua_gettop(L);
@@ -331,7 +337,7 @@ namespace lua
 
 		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int LoadScript1(IntPtr L)
+		internal static int LoadScript1(lua_State L)
 		{
 			var scriptName = Api.luaL_checkstring(L, 1);
 			try
@@ -353,7 +359,7 @@ namespace lua
 #if UNITY_EDITOR
 		// LoadScript, return result, scriptPath , have to public for Editor script
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript1InEditor(IntPtr L)
+		public static int LoadScript1InEditor(lua_State L)
 		{
 			var host = CheckHost(L);
 
@@ -375,7 +381,7 @@ namespace lua
 #endif
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
-		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out IntPtr size)
+		unsafe static IntPtr ChunkLoader(lua_State L, IntPtr data, out size_t size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
 			var chunk = handleToBinaryChunk.Target as Chunk;
@@ -383,11 +389,11 @@ namespace lua
 			if (chunk.pos < bytes.Length)
 			{
 				var curPos = chunk.pos;
-				size = new IntPtr(bytes.Length); // read all at once
+				size = new size_t((uint)bytes.Length); // read all at once
 				chunk.pos = bytes.Length;
 				return Marshal.UnsafeAddrOfPinnedArrayElement(bytes, curPos);
 			}
-			size = IntPtr.Zero;
+			size = size_t.Zero;
 			return IntPtr.Zero;
 		}
 
@@ -419,7 +425,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
-		static int ChunkWriter(IntPtr L, IntPtr p, IntPtr sz, IntPtr ud)
+		static int ChunkWriter(lua_State L, IntPtr p, size_t sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
 			var output = handleToOutput.Target as System.IO.MemoryStream;
@@ -457,7 +463,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Panic(IntPtr L)
+		static int Panic(lua_State L)
 		{
 			Api.luaL_traceback(L, L, Api.lua_tostring(L, -1), 1);
 			throw new LuaFatalException(Api.lua_tostring(L, -1));
@@ -468,7 +474,7 @@ namespace lua
 		{
 			var handleToObj = GCHandle.Alloc(obj, GCHandleType.Pinned);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
-			var userdata = Api.lua_newuserdata(L, new IntPtr(IntPtr.Size));
+			var userdata = Api.lua_newuserdata(L, new size_t((uint)IntPtr.Size));
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
 
@@ -816,7 +822,7 @@ namespace lua
 
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int InvokeMethod(IntPtr L)
+		static int InvokeMethod(lua_State L)
 		{
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).
@@ -944,7 +950,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaConstructFunction(IntPtr L)
+		static int MetaConstructFunction(lua_State L)
 		{
 			Lua host = CheckHost(L);
 
@@ -1026,7 +1032,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Import(IntPtr L)
+		static int Import(lua_State L)
 		{
 			var host = CheckHost(L);
 
@@ -1208,7 +1214,7 @@ namespace lua
 		}
 
 
-		static bool IsIndexingClassObject(IntPtr L)
+		static bool IsIndexingClassObject(lua_State L)
 		{
 			var isIndexingClassObject = false;
 			var top = Api.lua_gettop(L);
@@ -1223,7 +1229,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaIndexFunction(IntPtr L)
+		static int MetaIndexFunction(lua_State L)
 		{
 			var host = CheckHost(L);
 
@@ -1268,7 +1274,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaNewIndexFunction(IntPtr L)
+		static int MetaNewIndexFunction(lua_State L)
 		{
 			var host = CheckHost(L);
 
@@ -1372,7 +1378,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaToStringFunction(IntPtr L)
+		static int MetaToStringFunction(lua_State L)
 		{
 			var host = CheckHost(L);
 			var thisObject = host.ValueAt(1);
@@ -1381,7 +1387,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaGcFunction(IntPtr L)
+		static int MetaGcFunction(lua_State L)
 		{
 			var userdata = Api.lua_touserdata(L, 1);
 			var ptrToObjHandle = Marshal.ReadIntPtr(userdata);
@@ -1419,7 +1425,7 @@ namespace lua
 
 		// Invoking Lua Function
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int HandleLuaFunctionInvokingError(IntPtr L)
+		static int HandleLuaFunctionInvokingError(lua_State L)
 		{
 			var err = Api.lua_tostring(L, -1);
 			Api.lua_pop(L, 1);
@@ -1447,7 +1453,7 @@ namespace lua
 		}
 
 
-		public static string DebugStack(IntPtr L)
+		public static string DebugStack(lua_State L)
 		{
 			var top = Api.lua_gettop(L);
 			var sb = new System.Text.StringBuilder();

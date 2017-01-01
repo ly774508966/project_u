@@ -466,8 +466,11 @@ namespace lua
 			throw new LuaFatalException(Api.lua_tostring(L, -1));
 		}
 
-		// [-0,	+1,	m]
-		internal int PushObject(object obj, string metaTableName = "object_meta")
+		internal const string objectMetaTable = "object_meta";
+		internal const string classMetaTable = "class_meta";
+
+				// [-0,	+1,	m]
+		internal int PushObject(object obj, string metaTableName = objectMetaTable)
 		{
 			var handleToObj = GCHandle.Alloc(obj, GCHandleType.Pinned);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
@@ -487,9 +490,14 @@ namespace lua
 			return ObjectAtInternal(L, idx);
 		}
 
-		static object ObjectAtInternal(IntPtr L, int idx)
+		static object ObjectAtInternal(lua_State L, int idx)
 		{
 			var userdata = Api.lua_touserdata(L, idx);
+			return UdataToObject(userdata);
+		}
+
+		internal static object UdataToObject(IntPtr userdata)
+		{
 			if (userdata == IntPtr.Zero)
 			{
 				Debug.LogError("userdata is null");
@@ -826,7 +834,7 @@ namespace lua
 
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int InvokeMethod(lua_State L)
+		internal static int InvokeMethod(lua_State L)
 		{
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).
@@ -998,7 +1006,7 @@ namespace lua
 				Api.lua_pushnil(L);
 				return 1;
 			}
-			if (host.PushObject(type, "class_meta") == 1) // TODO: opt, for type loaded, cache it
+			if (host.PushObject(type, classMetaTable) == 1) // TODO: opt, for type loaded, cache it
 			{
 				Api.lua_getmetatable(L, -1);
 
@@ -1233,9 +1241,47 @@ namespace lua
 			}
 		}
 
+		internal enum BinaryOp
+		{
+			op_Addition = 0,
+			op_Subtraction,
+			op_Multiply,
+			op_Division,
+			op_Modulus,
+
+			op_Equality,
+			op_LessThan,
+
+			op_LessThanOrEqual,
+
+		}
+
+		static readonly KeyValuePair<string, int>[] binaryOps = new KeyValuePair<string, int>[]
+		{
+			new KeyValuePair<string, int>("__add", (int)BinaryOp.op_Addition),
+			new KeyValuePair<string, int>("__sub", (int)BinaryOp.op_Subtraction),
+			new KeyValuePair<string, int>("__mul", (int)BinaryOp.op_Multiply),
+			new KeyValuePair<string, int>("__div", (int)BinaryOp.op_Division),
+			new KeyValuePair<string, int>("__mod", (int)BinaryOp.op_Modulus),
+
+			new KeyValuePair<string, int>("__eq", (int)BinaryOp.op_Equality),
+			new KeyValuePair<string, int>("__lt", (int)BinaryOp.op_LessThan),
+			new KeyValuePair<string, int>("__le", (int)BinaryOp.op_LessThanOrEqual),
+
+		};
+
+		internal enum UnaryOp
+		{
+			op_UnaryNegation,
+		}
+
+		static readonly KeyValuePair<string, int>[] unaryOps = new KeyValuePair<string, int>[]
+		{
+			new KeyValuePair<string, int>("__unm", (int)UnaryOp.op_UnaryNegation),
+		};
 
 
-		// [-0, +1, -]
+				// [-0, +1, -]
 		int NewObjectMetatable(string metaTableName)
 		{
 			if (Api.luaL_newmetatable(L, metaTableName) == 1)
@@ -1243,6 +1289,20 @@ namespace lua
 				Debug.LogFormat("Registering object meta table {0} ... ", metaTableName);
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = false
+
+				foreach (var ops in binaryOps)
+				{
+					Api.lua_pushinteger(L, (int)ops.Value);
+					Api.lua_pushcclosure(L, MetaMethod.MetaBinaryOpFunction, 1);
+					Api.lua_setfield(L, -2, ops.Key);
+				}
+
+				foreach(var ops in unaryOps)
+				{
+					Api.lua_pushinteger(L, (int)ops.Value);
+					Api.lua_pushcclosure(L, MetaMethod.MetaUnaryOpFunction, 1);
+					Api.lua_setfield(L, -2, ops.Key);
+				}
 
 				Api.lua_pushcclosure(L, MetaMethod.MetaIndexFunction, 0);
 				Api.lua_setfield(L, -2, "__index");

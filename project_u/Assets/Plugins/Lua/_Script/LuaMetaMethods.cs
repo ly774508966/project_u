@@ -227,6 +227,63 @@ namespace lua
 			return 0;
 		}
 
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		internal static int MetaBinaryOpFunction(lua_State L)
+		{
+			var op = (Lua.BinaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
+			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
+			if (objectArg == IntPtr.Zero)
+			{
+				objectArg = Api.luaL_testudata(L, 2, Lua.objectMetaTable);
+				if (objectArg == IntPtr.Zero)
+				{
+					Lua.ThrowLuaException(L, string.Format("Binary op {0} called on unexpected values.", op));
+				}
+			}
+			var obj = Lua.UdataToObject(objectArg);
+			var type = obj.GetType();
+
+			var host = Lua.CheckHost(L);
+
+			// upvalue 1 --> isInvokingFromClass
+			// upvalue 2 --> userdata (host of metatable).
+			// upvalue 3 --> member name
+			Api.lua_pushboolean(L, true);
+			host.PushObject(type);
+			Api.lua_pushstring(L, op.ToString());
+			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
+			Api.lua_pushvalue(L, 1);
+			Api.lua_pushvalue(L, 2);
+			host.Call(2, 1);
+
+			return 1;
+		}
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		internal static int MetaUnaryOpFunction(lua_State L)
+		{
+			var op = (Lua.UnaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
+			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
+			if (objectArg == IntPtr.Zero)
+			{
+				Lua.ThrowLuaException(L, string.Format("Binary op {0} called on unexpected values.", op));
+			}
+			var obj = Lua.UdataToObject(objectArg);
+			var type = obj.GetType();
+
+			var host = Lua.CheckHost(L);
+
+			// upvalue 1 --> isInvokingFromClass
+			// upvalue 2 --> userdata (host of metatable).
+			// upvalue 3 --> member name
+			Api.lua_pushboolean(L, true);
+			host.PushObject(type);
+			Api.lua_pushstring(L, op.ToString());
+			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
+			Api.lua_pushvalue(L, 1);
+			host.Call(1, 1);
+			return 1;
+		}
 	}
 
 

@@ -168,7 +168,7 @@ namespace lua
 		{
 			return lua_isuserdata_(L, idx) == 1;
 		}
-
+		
 		[DllImport(LIBNAME)]
 		public static extern int lua_type(lua_State L, int idx);
 		[DllImport(LIBNAME, EntryPoint = "lua_typename")]

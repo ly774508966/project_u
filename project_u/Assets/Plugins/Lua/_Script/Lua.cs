@@ -74,7 +74,7 @@ namespace lua
 
 	public class Lua : IDisposable
 	{
-		IntPtr L;
+		lua_State L;
 
 		public bool valid
 		{
@@ -815,7 +815,7 @@ namespace lua
 			return sb.ToString();
 		}
 
-		internal static void CacheMethod(IntPtr L, Type targetType, string mangledName, System.Reflection.MethodBase method)
+		internal static void CacheMethod(lua_State L, Type targetType, string mangledName, System.Reflection.MethodBase method)
 		{
 			if (!useMethodCache) return;
 
@@ -1031,12 +1031,12 @@ namespace lua
 		}
 
 	
-		internal static void ThrowLuaException(IntPtr L, string err)
+		internal static void ThrowLuaException(lua_State L, string err)
 		{
 			Api.Assert(L, false, err);
 		}
 
-		internal static void ThrowLuaException(IntPtr L, Exception e)
+		internal static void ThrowLuaException(lua_State L, Exception e)
 		{
 			ThrowLuaException(L, e.Message);
 		}

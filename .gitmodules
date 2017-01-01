@@ -9,3 +9,6 @@
 [submodule "libs/lua/vscode-lua-debug"]
 	path = libs/lua/vscode-lua-debug
 	url = https://github.com/xiaobin83/vscode-lua-debug.git
+[submodule "libs/asmjit"]
+	path = libs/asmjit
+	url = https://github.com/asmjit/asmjit.git

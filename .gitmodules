@@ -6,3 +6,6 @@
 	path = libs/lua/protoc-gen-lua
 	url = https://github.com/xiaobin83/protoc-gen-lua
 	branch = master
+[submodule "libs/lua/vscode-lua-debug"]
+	path = libs/lua/vscode-lua-debug
+	url = https://github.com/xiaobin83/vscode-lua-debug.git

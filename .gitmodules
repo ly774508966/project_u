@@ -6,12 +6,11 @@
 	path = libs/lua/protoc-gen-lua
 	url = https://github.com/xiaobin83/protoc-gen-lua
 	branch = master
-[submodule "libs/lua/vscode-lua-debug"]
-	path = libs/lua/vscode-lua-debug
-	url = https://github.com/xiaobin83/vscode-lua-debug.git
 [submodule "libs/asmjit"]
 	path = libs/asmjit
-	url = https://github.com/asmjit/asmjit.git
+	url = https://github.com/xiaobin83/asmjit.git
+	branch = dev
 [submodule "libs/lua/luasocket"]
 	path = libs/lua/luasocket
 	url = https://github.com/xiaobin83/luasocket.git
+	branch = dev

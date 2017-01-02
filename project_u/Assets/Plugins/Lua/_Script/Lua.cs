@@ -341,7 +341,11 @@ namespace lua
 			{
 				throw new Exception(string.Format("0 bytes loaded from {0}", scriptName));
 			}
-			LoadChunk(bytes, scriptName);
+			var chunkName = string.Format("@{0}", scriptPath);
+#if UNITY_EDITOR
+			chunkName = chunkName.Replace('/', '\\');
+#endif
+			LoadChunk(bytes, chunkName);
 		}
 
 		void LoadScriptInternal(string scriptName, int nret, out string scriptPath)

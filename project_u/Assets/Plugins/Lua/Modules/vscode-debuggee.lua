@@ -13,6 +13,8 @@ local breaker
 local onError = nil
 
 local Debug = csharp.import('UnityEngine.Debug, UnityEngine')
+local print = Debug.Log
+local tostring = tostring
 
 local function defaultOnError(e)
 	print('****************************************************')
@@ -223,6 +225,20 @@ local function createHaltBreaker()
 	} 
 end
 
+-------------------------------------------------------------------------------
+local _debug = {}
+function debuggee._debug(what)
+	_debug[what] = true
+end
+
+local function _debug_hook()
+	if _debug['which_line'] then
+		local info = debug.getinfo(3, 'Sl')
+		print('[debuggee]' .. info.source .. ':' .. info.currentline)
+		_debug['which_line'] = false
+	end
+end
+
 local function createPureBreaker()
 	local lineBreakCallback = nil
 	local breakpointsPerPath = {}
@@ -247,15 +263,18 @@ local function createPureBreaker()
 		end
 
 		if foundPath then
+			print('chunkNameToPath, \n' .. chunkname .. '\n-> '.. foundPath)
  			chunknameToPathCache[chunkname] = foundPath			
 		end
 		return foundPath
 	end
 
 	local entered = false
-	local function hookfunc()
+	local function hookfunc(call_type, lineNumber)
 		if entered then return false end
 		entered = true
+
+		_debug_hook()
 
 		if lineBreakCallback then
 			lineBreakCallback()
@@ -276,6 +295,7 @@ local function createPureBreaker()
 
 	return {
 		setBreakpoints = function(path, lines)
+			print('bp: ' .. path .. ':' .. table.concat(lines, ':'))
 			local t = {}
 			local verifiedLines = {}
 			for _, ln in ipairs(lines) do
@@ -324,7 +344,7 @@ end
 -- 센드는 블럭이어도 됨.
 local function sendMessage(msg)
 	local body = json.encode(msg)
-	--print('SENDING:  ' .. body)	
+	print('SENDING:  ' .. body)	
 	sendFully('#' .. #body .. '\n' .. body)
 end
 
@@ -351,7 +371,7 @@ local function debugLoop()
 	nextVarRef = 1
 	while true do
 		local msg = recvMessage()
-		--print('RECEIVED: ' .. json.encode(msg))
+		print('RECEIVED: ' .. json.encode(msg))
 		
 		local fn = handlers[msg.command]
 		if fn then
@@ -363,12 +383,15 @@ local function debugLoop()
 				break;
 			end
 		else
-			--print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
+			print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
 		end
 	end
 	storedVariables = {}
 	nextVarRef = 1
 end
+
+
+
 
 -------------------------------------------------------------------------------
 local sockArray = {}
@@ -425,7 +448,7 @@ function debuggee.poll()
 		if e == 'timeout' then break end
 
 		local msg = recvMessage()
-		--print('POLL-RECEIVED: ' .. json.encode(msg))
+		print('POLL-RECEIVED: ' .. json.encode(msg))
 		
 		if msg.command == 'pause' then
 			debuggee.enterDebugLoop(1)
@@ -517,6 +540,7 @@ end
 
 -------------------------------------------------------------------------------
 _G.__halt__ = function()
+	print('__halt__')
 	baseDepth = breaker.stackOffset.halt
 	startDebugLoop()
 end
@@ -546,6 +570,8 @@ end
 -------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
+local arrayMt = { __is_luajson_array = true }
+
 function handlers.setBreakpoints(req)
 	local bpLines = {}
 	for _, bp in ipairs(req.arguments.breakpoints) do
@@ -557,6 +583,8 @@ function handlers.setBreakpoints(req)
 		bpLines)
 
 	local breakpoints = {}
+	-- luajson tread empty table {} as object, need to make it array
+	setmetatable(breakpoints, arrayMt)
 	for i, ln in ipairs(bpLines) do
 		breakpoints[i] = {
 			verified = (verifiedLines[ln] ~= nil),

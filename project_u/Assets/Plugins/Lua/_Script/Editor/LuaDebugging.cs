@@ -31,7 +31,8 @@ namespace lua
 	public class LuaDebugging
 	{
 		static LuaFunction debuggeePoll;
-		
+		static LuaFunction debuggee_Debug;
+
 		[MenuItem("Lua/Start Debugging ...")]
 		static void StartDebugging()
 		{
@@ -47,14 +48,15 @@ namespace lua
 				try
 				{
 					if (!Api.luaL_dostring(L,
-						"  local json =	require	'json'\n" +
+						"  local json =	require 'json'\n" +
 						"  local debuggee =	require	'vscode-debuggee'\n" +
 						"  local startType,	startResult	= debuggee.start(json)\n" +
 						"  local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n"	+
 						"  Debug.LogWarning('start lua debugging: '.. tostring(startType) .. ',	' .. tostring(startResult))\n" +
-						"  return debuggee.poll"))
+						"  return debuggee.poll, debuggee._debug"))
 					{
-						debuggeePoll = LuaFunction.MakeRefTo(L, -1);
+						debuggeePoll = LuaFunction.MakeRefTo(L, -2);
+						debuggee_Debug = LuaFunction.MakeRefTo(L, -1);
 						LuaBehaviour.debuggeePoll = delegate() {
 							try
 							{
@@ -66,6 +68,8 @@ namespace lua
 								LuaBehaviour.debuggeePoll = null;
 								debuggeePoll.Dispose();
 								debuggeePoll = null;
+								debuggee_Debug.Dispose();
+								debuggee_Debug = null;
 							}
 						};
 					}
@@ -80,6 +84,15 @@ namespace lua
 				}
 
 				Api.lua_settop(L, top);
+			}
+		}
+
+		[MenuItem("Lua/Which Line")]
+		static void WhichLine()
+		{
+			if (debuggee_Debug != null)
+			{
+				debuggee_Debug.Invoke(null, "which_line");
 			}
 		}
 	}

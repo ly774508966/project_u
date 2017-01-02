@@ -17,3 +17,6 @@
 [submodule "libs/lua/luajson"]
 	path = libs/lua/luajson
 	url = https://github.com/harningt/luajson.git
+[submodule "libs/lua/VSCodeLuaDebug"]
+	path = libs/lua/VSCodeLuaDebug
+	url = https://github.com/devcat-studio/VSCodeLuaDebug.git

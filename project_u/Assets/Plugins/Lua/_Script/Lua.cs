@@ -110,9 +110,15 @@ namespace lua
 			}
 		}
 
-		const string kLuaStub_ReplaceSearcher = 
-			"return function(s)\n" + 
-			"  package.searchers = { package.searchers[1], s }\n" +
+		const string kLuaStub_SetupPaths = 
+			"return function(s, path, cpath)\n" + 
+#if UNITY_EDITOR
+			"  table.insert(package.searchers, 2, s)\n" + // after preload
+			"  package.path = path .. ';' .. package.path\n" + 
+			"  package.cpath = cpath .. ';' .. package.cpath\n" +
+#else
+			"  package.searchers = { package.searchers[1], s }\n" + // keep only preload
+#endif
 			"end\n";
 
 
@@ -133,13 +139,42 @@ namespace lua
 			Api.luaL_requiref(L, "csharp", OpenCsharpLib, 1);
 			Api.lua_pop(L, 1); // pop csharp
 
-			// override searcher (insert in the second place, and remove all rest)
+			// override searcher (insert in the second place, and also set path and cpath)
+ 			// Searcher provided here will load all script/modules except modules/cmodules running only
+			// in editor. Lua will handle those modules itself.
 			try
 			{
-				Api.luaL_dostring(L, kLuaStub_ReplaceSearcher);
-				Debug.Assert(Api.lua_isfunction(L, -1));
+				Api.luaL_dostring(L, kLuaStub_SetupPaths);
 				Api.lua_pushcclosure(L, Searcher, 0);
-				Call(1, 0);
+#if UNITY_EDITOR
+				// path
+				var path = Application.dataPath;
+				path = System.IO.Path.Combine(path, "Plugins");
+				path = System.IO.Path.Combine(path, "Lua");
+				path = System.IO.Path.Combine(path, "Modules");
+				path = path.Replace('\\', '/');
+				var luaPath = path + "/?.lua;" + path +"/?/init.lua";
+				Api.lua_pushstring(L, luaPath);
+
+
+				// cpath
+				path = Application.dataPath;
+				path = System.IO.Path.Combine(path, "Plugins");
+				path = System.IO.Path.Combine(path, "Lua");
+				path = System.IO.Path.Combine(path, "Windows");
+				if (IntPtr.Size > 4)
+					path = System.IO.Path.Combine(path, "x86_64");
+				else
+					path = System.IO.Path.Combine(path, "x86");
+				path = path.Replace('\\', '/');
+				var luaCPath = path + "/?.dll;"+path + "/?/init.dll";
+				Api.lua_pushstring(L, luaCPath);
+#else
+				Api.lua_pushnil(L);
+				Api.lua_pushnil(L);
+#endif
+
+				Call(3, 0);
 			}
 			catch (Exception e)
 			{
@@ -226,7 +261,8 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				ThrowLuaException(L, e);
+				Api.lua_pushnil(L);
+				Api.lua_pushstring(L, e.Message);
 			}
 			return 2;
 		}
@@ -295,7 +331,6 @@ namespace lua
 			}
 
 			scriptPath = path;
-
 			return www.bytes;
 		}
 
@@ -304,7 +339,7 @@ namespace lua
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
 			{
-				throw new Exception("0 bytes loaded");
+				throw new Exception(string.Format("0 bytes loaded from {0}", scriptName));
 			}
 			LoadChunk(bytes, scriptName);
 		}

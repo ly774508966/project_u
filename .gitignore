@@ -7,3 +7,4 @@ project_u/obj
 *.userprefs
 *.orig
 *.orig.meta
+*.vscode

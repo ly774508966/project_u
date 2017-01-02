@@ -357,6 +357,14 @@ namespace lua
 
 
 #if UNITY_EDITOR
+		public static System.Action debuggeePoll;
+
+		void LateUpdate()
+		{
+			if (debuggeePoll != null)
+				debuggeePoll();
+		}
+
 		public bool IsInitFuncDumped()
 		{
 			return !string.IsNullOrEmpty(scriptName) && _Init != null && _Init.Length > 0;

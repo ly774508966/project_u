@@ -14,3 +14,6 @@
 	path = libs/lua/luasocket
 	url = https://github.com/xiaobin83/luasocket.git
 	branch = dev
+[submodule "libs/lua/luajson"]
+	path = libs/lua/luajson
+	url = https://github.com/harningt/luajson.git

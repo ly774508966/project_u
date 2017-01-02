@@ -12,3 +12,6 @@
 [submodule "libs/asmjit"]
 	path = libs/asmjit
 	url = https://github.com/asmjit/asmjit.git
+[submodule "libs/lua/luasocket"]
+	path = libs/lua/luasocket
+	url = https://github.com/xiaobin83/luasocket.git

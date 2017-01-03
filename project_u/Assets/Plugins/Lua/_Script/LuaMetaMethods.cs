@@ -143,7 +143,7 @@ namespace lua
 				if (typeObject != null && typeObject.IsArray)
 				{
 					var array = (System.Array)thisObject;
-					host.PushValue(array.GetValue(Api.lua_tointeger(L, 2)));
+					host.PushValue(array.GetValue((int)Api.lua_tointeger(L, 2)));
 					return 1;
 				}
 				else
@@ -189,8 +189,17 @@ namespace lua
 				{
 					var array = (System.Array)thisObject;
 					var value = host.ValueAt(3);
-					var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
-					array.SetValue(converted, Api.lua_tointeger(L, 2));
+					var index = (int)Api.lua_tointeger(L, 2);
+					object convertedNumber;
+					if (Lua.ConvertNumber(typeObject.GetElementType(), value, out convertedNumber))
+					{
+						array.SetValue(convertedNumber, index);
+					}
+					else
+					{
+						var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
+						array.SetValue(converted, index);
+					}
 				}
 				else
 				{
@@ -230,7 +239,9 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		internal static int MetaBinaryOpFunction(lua_State L)
 		{
-			var op = (Lua.BinaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
+			var opValue = Api.lua_tointeger(L, Api.lua_upvalueindex(1));
+			Debug.Log("Execute BinaryOp " + opValue);
+			var op = (Lua.BinaryOp)opValue;
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
 			if (objectArg == IntPtr.Zero)
 			{
@@ -251,6 +262,7 @@ namespace lua
 			Api.lua_pushboolean(L, true);
 			host.PushObject(type);
 			Api.lua_pushstring(L, op.ToString());
+			Debug.Log("BinaryOp is " + op.ToString());
 			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
 			Api.lua_pushvalue(L, 1);
 			Api.lua_pushvalue(L, 2);

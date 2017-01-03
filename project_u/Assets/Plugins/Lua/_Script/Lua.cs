@@ -1230,8 +1230,17 @@ namespace lua
 			}
 			try
 			{
-				var converted = System.Convert.ChangeType(value, prop.PropertyType);
-				prop.SetValue(obj, converted, index);
+				var propType = prop.PropertyType;
+				object convertedNumber;
+				if (ConvertNumber(propType, value, out convertedNumber))
+				{
+					prop.SetValue(obj, convertedNumber, index);
+				}
+				else
+				{
+					var converted = System.Convert.ChangeType(value, propType);
+					prop.SetValue(obj, converted, index);
+				}
 			}
 			catch (ArgumentException)
 			{
@@ -1243,6 +1252,67 @@ namespace lua
 			{
 				ThrowLuaException(L, e);
 			}
+		}
+
+		internal static bool ConvertNumber(Type type, object value, out object converted)
+		{
+			if (type == typeof(int))
+			{
+				converted = (int)(long)value;
+				return true;
+			}
+			else if (type == typeof(float))
+			{
+				converted = (float)(double)value;
+				return true;
+			}
+			else if (type == typeof(long))
+			{
+				converted = (long)value;
+				return true;
+			}
+			else if (type == typeof(double))
+			{
+				converted = (double)value;
+				return true;
+			}
+			else if (type == typeof(short))
+			{
+				converted = (short)(long)value;
+				return true;
+			}
+			else if (type == typeof(uint))
+			{
+				converted = (uint)(long)value;
+				return true;
+			}
+			else if (type == typeof(ulong))
+			{
+				converted = (long)value;
+				return true;
+			}
+			else if (type == typeof(ushort))
+			{
+				converted = (ushort)(long)value;
+				return true;
+			}
+			else if (type == typeof(ushort))
+			{
+				converted = (ushort)(long)value;
+				return true;
+			}
+			else if (type == typeof(char))
+			{
+				converted = (char)(long)value;
+				return true;
+			}
+			else if (type == typeof(byte))
+			{
+				converted = (byte)(long)value;
+				return true;
+			}
+			converted = null;
+			return false;
 		}
 
 		internal void SetMember(object thisObject, Type type, string memberName, object value)
@@ -1258,14 +1328,32 @@ namespace lua
 				if (member.MemberType == System.Reflection.MemberTypes.Field)
 				{
 					var field = (System.Reflection.FieldInfo)member;
-					var converted = System.Convert.ChangeType(ValueAt(3), field.FieldType);
-					field.SetValue(thisObject, converted);
+					var fieldType = field.FieldType;
+					object convertedNumber;
+					if (ConvertNumber(fieldType, value, out convertedNumber))
+					{
+						field.SetValue(thisObject, convertedNumber);
+					}
+					else
+					{
+						var converted = System.Convert.ChangeType(value, fieldType);
+						field.SetValue(thisObject, converted);
+					}
 				}
 				else if (member.MemberType == System.Reflection.MemberTypes.Property)
 				{
 					var prop = (System.Reflection.PropertyInfo)member;
-					var converted = System.Convert.ChangeType(ValueAt(3), prop.PropertyType);
-					prop.SetValue(thisObject, converted, null);
+					var propType = prop.PropertyType;
+					object convertedNumber;
+					if (ConvertNumber(propType, value, out convertedNumber))
+					{
+						prop.SetValue(thisObject, convertedNumber, null);
+					}
+					else
+					{
+						var converted = System.Convert.ChangeType(value, propType);
+						prop.SetValue(thisObject, converted, null);
+					}
 				}
 				else
 				{
@@ -1306,7 +1394,7 @@ namespace lua
 
 		internal enum UnaryOp
 		{
-			op_UnaryNegation,
+			op_UnaryNegation = 0,
 		}
 
 		static readonly KeyValuePair<string, int>[] unaryOps = new KeyValuePair<string, int>[]
@@ -1324,18 +1412,18 @@ namespace lua
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = false
 
-				foreach (var ops in binaryOps)
+				foreach (var op in binaryOps)
 				{
-					Api.lua_pushinteger(L, (int)ops.Value);
+                    Api.lua_pushinteger(L, op.Value);
 					Api.lua_pushcclosure(L, MetaMethod.MetaBinaryOpFunction, 1);
-					Api.lua_setfield(L, -2, ops.Key);
+					Api.lua_setfield(L, -2, op.Key);
 				}
 
-				foreach(var ops in unaryOps)
+				foreach(var op in unaryOps)
 				{
-					Api.lua_pushinteger(L, (int)ops.Value);
+					Api.lua_pushinteger(L, op.Value);
 					Api.lua_pushcclosure(L, MetaMethod.MetaUnaryOpFunction, 1);
-					Api.lua_setfield(L, -2, ops.Key);
+					Api.lua_setfield(L, -2, op.Key);
 				}
 
 				Api.lua_pushcclosure(L, MetaMethod.MetaIndexFunction, 0);

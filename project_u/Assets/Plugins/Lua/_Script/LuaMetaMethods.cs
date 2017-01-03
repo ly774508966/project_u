@@ -25,14 +25,12 @@ using System;
 using System.Runtime.InteropServices;
 using AOT;
 
-using lua_State = System.IntPtr;
-
 namespace lua
 {
 
 	internal class MetaMethod
 	{
-		static bool IsIndexingClassObject(lua_State L)
+		static bool IsIndexingClassObject(IntPtr L)
 		{
 			var isIndexingClassObject = false;
 			var top = Api.lua_gettop(L);
@@ -47,7 +45,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaConstructFunction(lua_State L)
+		internal static int MetaConstructFunction(IntPtr L)
 		{
 			Lua host = Lua.CheckHost(L);
 
@@ -117,7 +115,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaIndexFunction(lua_State L)
+		internal static int MetaIndexFunction(IntPtr L)
 		{
 			var host = Lua.CheckHost(L);
 
@@ -162,7 +160,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaNewIndexFunction(lua_State L)
+		internal static int MetaNewIndexFunction(IntPtr L)
 		{
 			var host = Lua.CheckHost(L);
 
@@ -218,7 +216,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaToStringFunction(lua_State L)
+		internal static int MetaToStringFunction(IntPtr L)
 		{
 			var host = Lua.CheckHost(L);
 			var thisObject = host.ValueAt(1);
@@ -227,7 +225,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaGcFunction(lua_State L)
+		internal static int MetaGcFunction(IntPtr L)
 		{
 			var userdata = Api.lua_touserdata(L, 1);
 			var ptrToObjHandle = Marshal.ReadIntPtr(userdata);
@@ -237,10 +235,9 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaBinaryOpFunction(lua_State L)
+		internal static int MetaBinaryOpFunction(IntPtr L)
 		{
 			var opValue = Api.lua_tointeger(L, Api.lua_upvalueindex(1));
-			Debug.Log("Execute BinaryOp " + opValue);
 			var op = (Lua.BinaryOp)opValue;
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
 			if (objectArg == IntPtr.Zero)
@@ -262,7 +259,6 @@ namespace lua
 			Api.lua_pushboolean(L, true);
 			host.PushObject(type);
 			Api.lua_pushstring(L, op.ToString());
-			Debug.Log("BinaryOp is " + op.ToString());
 			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
 			Api.lua_pushvalue(L, 1);
 			Api.lua_pushvalue(L, 2);
@@ -272,7 +268,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaUnaryOpFunction(lua_State L)
+		internal static int MetaUnaryOpFunction(IntPtr L)
 		{
 			var op = (Lua.UnaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one

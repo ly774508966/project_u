@@ -6,10 +6,6 @@
 	path = libs/lua/protoc-gen-lua
 	url = https://github.com/xiaobin83/protoc-gen-lua
 	branch = master
-[submodule "libs/asmjit"]
-	path = libs/asmjit
-	url = https://github.com/xiaobin83/asmjit.git
-	branch = dev
 [submodule "libs/lua/luasocket"]
 	path = libs/lua/luasocket
 	url = https://github.com/xiaobin83/luasocket.git

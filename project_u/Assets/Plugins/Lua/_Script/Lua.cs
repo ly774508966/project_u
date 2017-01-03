@@ -27,12 +27,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using AOT;
 
-using lua_KContext = System.IntPtr;
-using lua_Integer = System.Int64;
-using lua_Number = System.Double;
-using size_t = System.UIntPtr;
-using lua_State = System.IntPtr;
-
 // NEVER throw Lua exception in a C# native function
 // NEVER throw C# exception in lua_CFunction
 // catch all C# exception in any lua_CFunction and ThrowLuaException instead
@@ -66,6 +60,7 @@ namespace lua
 		public LuaFatalException(string errorMessage)
 			: base(errorMessage)
 		{
+			Debug.LogError("LUA FATAL: " + errorMessage);
 		}
 	}
 
@@ -85,11 +80,11 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Alloc))]
-		static IntPtr Alloc(IntPtr ud, IntPtr ptr, uint osize, uint nsize)
+		static IntPtr Alloc(IntPtr ud, IntPtr ptr, UIntPtr osize, UIntPtr nsize)
 		{
 			try
 			{
-				if (nsize == 0)
+				if (nsize == UIntPtr.Zero)
 				{
 					if (ptr != IntPtr.Zero)
 						Marshal.FreeHGlobal(ptr);
@@ -98,9 +93,9 @@ namespace lua
 				else
 				{
 					if (ptr != IntPtr.Zero)
-						return Marshal.ReAllocHGlobal(ptr, new IntPtr(nsize));
+						return Marshal.ReAllocHGlobal(ptr, new IntPtr((long)nsize.ToUInt64()));
 					else
-						return Marshal.AllocHGlobal(new IntPtr(nsize));
+						return Marshal.AllocHGlobal(new IntPtr((long)nsize.ToUInt64()));
 				}
 			}
 			catch (Exception e)
@@ -110,9 +105,15 @@ namespace lua
 			}
 		}
 
-		const string kLuaStub_ReplaceSearcher = 
-			"return function(s)\n" + 
-			"  package.searchers = { package.searchers[1], s }\n" +
+		const string kLuaStub_SetupPaths = 
+			"return function(s, path, cpath)\n" + 
+#if UNITY_EDITOR
+			"  table.insert(package.searchers, 2, s)\n" + // after preload
+			"  package.path = path .. ';' .. package.path\n" + 
+			"  package.cpath = cpath .. ';' .. package.cpath\n" +
+#else
+			"  package.searchers = { package.searchers[1], s }\n" + // keep only preload
+#endif
 			"end\n";
 
 
@@ -133,13 +134,42 @@ namespace lua
 			Api.luaL_requiref(L, "csharp", OpenCsharpLib, 1);
 			Api.lua_pop(L, 1); // pop csharp
 
-			// override searcher (insert in the second place, and remove all rest)
+			// override searcher (insert in the second place, and also set path and cpath)
+ 			// Searcher provided here will load all script/modules except modules/cmodules running only
+			// in editor. Lua will handle those modules itself.
 			try
 			{
-				Api.luaL_dostring(L, kLuaStub_ReplaceSearcher);
-				Debug.Assert(Api.lua_isfunction(L, -1));
+				Api.luaL_dostring(L, kLuaStub_SetupPaths);
 				Api.lua_pushcclosure(L, Searcher, 0);
-				Call(1, 0);
+#if UNITY_EDITOR
+				// path
+				var path = Application.dataPath;
+				path = System.IO.Path.Combine(path, "Plugins");
+				path = System.IO.Path.Combine(path, "Lua");
+				path = System.IO.Path.Combine(path, "Modules");
+				path = path.Replace('\\', '/');
+				var luaPath = path + "/?.lua;" + path +"/?/init.lua";
+				Api.lua_pushstring(L, luaPath);
+
+
+				// cpath
+				path = Application.dataPath;
+				path = System.IO.Path.Combine(path, "Plugins");
+				path = System.IO.Path.Combine(path, "Lua");
+				path = System.IO.Path.Combine(path, "Windows");
+				if (IntPtr.Size > 4)
+					path = System.IO.Path.Combine(path, "x86_64");
+				else
+					path = System.IO.Path.Combine(path, "x86");
+				path = path.Replace('\\', '/');
+				var luaCPath = path + "/?.dll;"+path + "/?/init.dll";
+				Api.lua_pushstring(L, luaCPath);
+#else
+				Api.lua_pushnil(L);
+				Api.lua_pushnil(L);
+#endif
+
+				Call(3, 0);
 			}
 			catch (Exception e)
 			{
@@ -194,7 +224,7 @@ namespace lua
 			Api.lua_setglobal(L, kHost);
 		}
 
-		static Lua CheckHost(lua_State L)
+		internal static Lua CheckHost(IntPtr L)
 		{
 			Lua host = null;
 			var top = Api.lua_gettop(L);
@@ -213,7 +243,7 @@ namespace lua
 		// 
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Searcher(lua_State L)
+		static int Searcher(IntPtr L)
 		{
 			var host = CheckHost(L);
 
@@ -226,13 +256,14 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				ThrowLuaException(L, e);
+				Api.lua_pushnil(L);
+				Api.lua_pushstring(L, e.Message);
 			}
 			return 2;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int OpenCsharpLib(lua_State L)
+		static int OpenCsharpLib(IntPtr L)
 		{
 			var regs = new Api.luaL_Reg[]
 			{
@@ -295,7 +326,6 @@ namespace lua
 			}
 
 			scriptPath = path;
-
 			return www.bytes;
 		}
 
@@ -304,9 +334,13 @@ namespace lua
 			var bytes = loadScriptFromFile(scriptName, out scriptPath);
 			if (bytes == null)
 			{
-				throw new Exception("0 bytes loaded");
+				throw new Exception(string.Format("0 bytes loaded from {0}", scriptName));
 			}
-			LoadChunk(bytes, scriptName);
+			var chunkName = string.Format("@{0}", scriptPath);
+#if UNITY_EDITOR
+			chunkName = chunkName.Replace('/', '\\');
+#endif
+			LoadChunk(bytes, chunkName);
 		}
 
 		void LoadScriptInternal(string scriptName, int nret, out string scriptPath)
@@ -317,7 +351,7 @@ namespace lua
 
 		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int LoadScript(lua_State L)
+		internal static int LoadScript(IntPtr L)
 		{
 			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
@@ -338,7 +372,7 @@ namespace lua
 
 		// Run script and adjust the numb of return	value to 1
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int LoadScript1(lua_State L)
+		internal static int LoadScript1(IntPtr L)
 		{
 			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
@@ -361,7 +395,7 @@ namespace lua
 #if UNITY_EDITOR
 		// LoadScript, return result, scriptPath , have to public for Editor script
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LoadScript1InEditor(lua_State L)
+		public static int LoadScript1InEditor(IntPtr L)
 		{
 			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
@@ -382,7 +416,7 @@ namespace lua
 #endif
 
 		[MonoPInvokeCallback(typeof(Api.lua_Reader))]
-		unsafe static IntPtr ChunkLoader(lua_State L, IntPtr data, out size_t size)
+		unsafe static IntPtr ChunkLoader(IntPtr L, IntPtr data, out UIntPtr size)
 		{
 			var handleToBinaryChunk = GCHandle.FromIntPtr(data);
 			var chunk = handleToBinaryChunk.Target as Chunk;
@@ -390,11 +424,11 @@ namespace lua
 			if (chunk.pos < bytes.Length)
 			{
 				var curPos = chunk.pos;
-				size = new size_t((uint)bytes.Length); // read all at once
+				size = new UIntPtr((uint)bytes.Length); // read all at once
 				chunk.pos = bytes.Length;
 				return Marshal.UnsafeAddrOfPinnedArrayElement(bytes, curPos);
 			}
-			size = size_t.Zero;
+			size = UIntPtr.Zero;
 			return IntPtr.Zero;
 		}
 
@@ -426,7 +460,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_Writer))]
-		static int ChunkWriter(lua_State L, IntPtr p, size_t sz, IntPtr ud)
+		static int ChunkWriter(IntPtr L, IntPtr p, UIntPtr sz, IntPtr ud)
 		{
 			var handleToOutput = GCHandle.FromIntPtr(ud);
 			var output = handleToOutput.Target as System.IO.MemoryStream;
@@ -460,18 +494,21 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Panic(lua_State L)
+		static int Panic(IntPtr L)
 		{
 			Api.luaL_traceback(L, L, Api.lua_tostring(L, -1), 1);
 			throw new LuaFatalException(Api.lua_tostring(L, -1));
 		}
 
-		// [-0,	+1,	m]
-		int PushObject(object obj, string metaTableName = "object_meta")
+		internal const string objectMetaTable = "object_meta";
+		internal const string classMetaTable = "class_meta";
+
+				// [-0,	+1,	m]
+		internal int PushObject(object obj, string metaTableName = objectMetaTable)
 		{
 			var handleToObj = GCHandle.Alloc(obj, GCHandleType.Pinned);
 			var ptrToObjHandle = GCHandle.ToIntPtr(handleToObj);
-			var userdata = Api.lua_newuserdata(L, new size_t((uint)IntPtr.Size));
+			var userdata = Api.lua_newuserdata(L, new UIntPtr((uint)IntPtr.Size));
 			// stack: userdata
 			Marshal.WriteIntPtr(userdata, ptrToObjHandle);
 
@@ -490,6 +527,11 @@ namespace lua
 		static object ObjectAtInternal(IntPtr L, int idx)
 		{
 			var userdata = Api.lua_touserdata(L, idx);
+			return UdataToObject(userdata);
+		}
+
+		internal static object UdataToObject(IntPtr userdata)
+		{
 			if (userdata == IntPtr.Zero)
 			{
 				Debug.LogError("userdata is null");
@@ -635,7 +677,7 @@ namespace lua
 			return false;
 		}
 
-		static bool MatchArgs(System.Reflection.ParameterInfo[] args, int[] luaArgTypes)
+		internal static bool MatchArgs(System.Reflection.ParameterInfo[] args, int[] luaArgTypes)
 		{
 			if (args.Length == luaArgTypes.Length)
 			{
@@ -665,7 +707,7 @@ namespace lua
 			return null;
 		}
 
-		object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs, out IDisposable[] disposableArgs)
+		internal object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs, out IDisposable[] disposableArgs)
 		{
 			if (args == null || args.Length == 0)
 			{
@@ -732,9 +774,9 @@ namespace lua
 			return actualArgs;
 		}
 
-		static readonly int[] luaArgTypes_NoArgs = new int[0];
+		internal static readonly int[] luaArgTypes_NoArgs = new int[0];
 
-		static string GetLuaInvokingSigniture(string methodName, int[] args)
+		internal static string GetLuaInvokingSigniture(string methodName, int[] args)
 		{
 			var sb = new System.Text.StringBuilder();
 			sb.Append(methodName);
@@ -771,7 +813,7 @@ namespace lua
 			}
 		}
 
-		static System.Reflection.MethodBase GetMethodFromCache(Type targetType, string mangledName)
+		internal static System.Reflection.MethodBase GetMethodFromCache(Type targetType, string mangledName)
 		{
 			if (!useMethodCache) return null;
 
@@ -787,7 +829,7 @@ namespace lua
 			return method;
 		}
 
-		static string Mangle(string methodName, int[] luaArgTypes, bool invokingStaticMethod)
+		internal static string Mangle(string methodName, int[] luaArgTypes, bool invokingStaticMethod)
 		{
 			var sb = new System.Text.StringBuilder();
 			if (invokingStaticMethod)
@@ -807,9 +849,7 @@ namespace lua
 			return sb.ToString();
 		}
 
-
-
-		static void CacheMethod(IntPtr L, Type targetType, string mangledName, System.Reflection.MethodBase method)
+		internal static void CacheMethod(IntPtr L, Type targetType, string mangledName, System.Reflection.MethodBase method)
 		{
 			if (!useMethodCache) return;
 
@@ -827,11 +867,8 @@ namespace lua
 		}
 
 
-
-
-
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int InvokeMethod(lua_State L)
+		internal static int InvokeMethod(IntPtr L)
 		{
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).
@@ -968,75 +1005,7 @@ namespace lua
 			return 0;
 		}
 
-		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaConstructFunction(lua_State L)
-		{
-			Lua host = CheckHost(L);
-
-			var typeObj = host.ObjectAt(1);
-			Api.Assert(L, (typeObj != null) && (typeObj is System.Type), "Constructor needs type object.");
-
-			var numArgs = Api.lua_gettop(L);
-			int[] luaArgTypes = luaArgTypes_NoArgs;
-			if (numArgs > 1) // the first arg is class itself
-			{
-				luaArgTypes = new int[numArgs - 1];
-				for (var i = 2; i <= numArgs; ++i)
-				{
-					luaArgTypes[i-2] = Api.lua_type(L, i);
-				}
-			}
-
-			var type = (System.Type)typeObj;
-			var mangledName = Mangle("__ctor", luaArgTypes, invokingStaticMethod: true);
-			var method = GetMethodFromCache(type, mangledName);
-			System.Reflection.ParameterInfo[] parameters = null;
-			if (method == null)
-			{
-				var constructors = type.GetConstructors();
-				for (var i = 0; i < constructors.Length; ++i)
-				{
-					method = constructors[i];
-					parameters = method.GetParameters();
-					if (MatchArgs(parameters, luaArgTypes))
-					{
-						CacheMethod(L, type, mangledName, method);
-						break;
-					}
-				}
-			}
-			else
-			{
-				parameters = method.GetParameters();
-			}
-			if (method != null)
-			{
-				var ctor = (System.Reflection.ConstructorInfo)method;
-				try
-				{
-					IDisposable[] disposableArgs;
-					var args = host.ArgsFrom(parameters, 2, numArgs, out disposableArgs);
-					host.PushObject(ctor.Invoke(args));
-					if (disposableArgs != null)
-					{
-						foreach (var d in disposableArgs)
-						{
-							if (d != null) d.Dispose();
-						}
-					}
-				}
-				catch (Exception e)
-				{
-					ThrowLuaException(L, e);
-				}
-			}
-			else
-			{
-				Api.Assert(L, false, string.Format("No proper constructor available, calling {0}", GetLuaInvokingSigniture("ctor", luaArgTypes)));
-				Api.lua_pushnil(L);
-			}
-			return 1;
-		}
+		
 
 		public void Import(Type type, string name)
 		{
@@ -1060,7 +1029,7 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int ImportInternal(lua_State L)
+		static int ImportInternal(IntPtr L)
 		{
 			var host = CheckHost(L);
 			var typename = Api.luaL_checkstring(L, 1);
@@ -1071,14 +1040,14 @@ namespace lua
 				Api.lua_pushnil(L);
 				return 1;
 			}
-			if (host.PushObject(type, "class_meta") == 1) // TODO: opt, for type loaded, cache it
+			if (host.PushObject(type, classMetaTable) == 1) // TODO: opt, for type loaded, cache it
 			{
 				Api.lua_getmetatable(L, -1);
 
 				Api.lua_pushboolean(L, true);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = true
 
-				Api.lua_pushcclosure(L, MetaConstructFunction, 0);
+				Api.lua_pushcclosure(L, MetaMethod.MetaConstructFunction, 0);
 				Api.lua_setfield(L, -2, "__call");
 
 				Api.lua_pop(L, 1);
@@ -1088,7 +1057,7 @@ namespace lua
 
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int Import(lua_State L)
+		static int Import(IntPtr L)
 		{
 			var typename = Api.luaL_checkstring(L, 1);
 			Api.luaL_requiref(L, typename, ImportInternal, 0);
@@ -1096,12 +1065,12 @@ namespace lua
 		}
 
 	
-		static void ThrowLuaException(IntPtr L, string err)
+		internal static void ThrowLuaException(IntPtr L, string err)
 		{
 			Api.Assert(L, false, err);
 		}
 
-		static void ThrowLuaException(IntPtr L, Exception e)
+		internal static void ThrowLuaException(IntPtr L, Exception e)
 		{
 			ThrowLuaException(L, e.Message);
 		}
@@ -1153,7 +1122,7 @@ namespace lua
 			}
 		}
 
-		int GetMember(object obj, Type objType, string memberName)
+		internal int GetMember(object obj, Type objType, string memberName)
 		{
 			var members = objType.GetMember(memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
 			if (members.Length > 0)
@@ -1219,7 +1188,7 @@ namespace lua
 			}
 		}
 
-		int IndexObject(object obj, Type type, object[] index)
+		internal int IndexObject(object obj, Type type, object[] index)
 		{
 			Api.Assert(L, index != null);
 			var prop = type.GetProperty("Item");
@@ -1249,114 +1218,7 @@ namespace lua
 			return 1;
 		}
 
-
-		static bool IsIndexingClassObject(lua_State L)
-		{
-			var isIndexingClassObject = false;
-			var top = Api.lua_gettop(L);
-			Api.lua_getmetatable(L, 1);
-			if (Api.lua_istable(L, -1))
-			{
-				Api.lua_rawgeti(L, -1, 1);
-				isIndexingClassObject = Api.lua_toboolean(L, -1);
-			}
-			Api.lua_settop(L, top);
-			return isIndexingClassObject;
-		}
-
-		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaIndexFunction(lua_State L)
-		{
-			var host = CheckHost(L);
-
-			var isIndexingClassObject = IsIndexingClassObject(L);
-
-			System.Type typeObject = null;
-			if (isIndexingClassObject)
-			{
-				typeObject = (System.Type)host.ObjectAt(1);
-			}
-
-			object thisObject = null;
-			if (!isIndexingClassObject)
-			{
-				thisObject = host.ObjectAt(1);
-				typeObject = thisObject.GetType();
-			}
-
-			Api.Assert(L, typeObject != null, "Should has a type.");
-
-			if (Api.lua_isinteger(L, 2))
-			{
-				if (typeObject != null && typeObject.IsArray)
-				{
-					var array = (System.Array)thisObject;
-					host.PushValue(array.GetValue(Api.lua_tointeger(L, 2)));
-					return 1;
-				}
-				else
-				{
-					return host.IndexObject(thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) });
-				}
-			}
-			else if (Api.lua_isstring(L, 2))
-			{
-				return host.GetMember(thisObject, typeObject, Api.lua_tostring(L, 2));
-			}
-			else
-			{
-				return host.IndexObject(thisObject, typeObject, new object[] { host.ValueAt(2) });
-			}
-		}
-
-		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaNewIndexFunction(lua_State L)
-		{
-			var host = CheckHost(L);
-
-			var isIndexingClassObject = IsIndexingClassObject(L);
-
-			System.Type typeObject = null;
-			if (isIndexingClassObject)
-			{
-				typeObject = (System.Type)host.ObjectAt(1);
-			}
-
-			object thisObject = null;
-			if (!isIndexingClassObject)
-			{
-				thisObject = host.ObjectAt(1);
-				typeObject = thisObject.GetType();
-			}
-
-			Api.Assert(L, typeObject != null, "Should has a type.");
-
-			if (Api.lua_isnumber(L, 2))
-			{
-				if (typeObject != null && typeObject.IsArray)
-				{
-					var array = (System.Array)thisObject;
-					var value = host.ValueAt(3);
-					var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
-					array.SetValue(converted, Api.lua_tointeger(L, 2));
-				}
-				else
-				{
-					host.SetValueAtIndexOfObject(thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, host.ValueAt(3));
-				}
-			}
-			else if (Api.lua_isstring(L, 2))
-			{
-				host.SetMember(thisObject, typeObject, Api.lua_tostring(L, 2), host.ValueAt(3));
-			}
-			else
-			{
-				host.SetValueAtIndexOfObject(thisObject, typeObject, new object[] { host.ValueAt(2) }, host.ValueAt(3));
-			}
-			return 0;
-		}
-
-		void SetValueAtIndexOfObject(object obj, Type type, object[] index, object value)
+		internal void SetValueAtIndexOfObject(object obj, Type type, object[] index, object value)
 		{
 			Api.Assert(L, index != null);
 			var prop = type.GetProperty("Item");
@@ -1383,7 +1245,7 @@ namespace lua
 			}
 		}
 
-		void SetMember(object thisObject, Type type, string memberName, object value)
+		internal void SetMember(object thisObject, Type type, string memberName, object value)
 		{
 			Api.Assert(L, type.IsClass, string.Format("Setting property {0} of {1} object", memberName, type.ToString()));
 
@@ -1413,26 +1275,47 @@ namespace lua
 			}
 		}
 
-		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaToStringFunction(lua_State L)
+		internal enum BinaryOp
 		{
-			var host = CheckHost(L);
-			var thisObject = host.ValueAt(1);
-			Api.lua_pushstring(L, thisObject.ToString());
-			return 1;
+			op_Addition = 0,
+			op_Subtraction,
+			op_Multiply,
+			op_Division,
+			op_Modulus,
+
+			op_Equality,
+			op_LessThan,
+
+			op_LessThanOrEqual,
+
 		}
 
-		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int MetaGcFunction(lua_State L)
+		static readonly KeyValuePair<string, int>[] binaryOps = new KeyValuePair<string, int>[]
 		{
-			var userdata = Api.lua_touserdata(L, 1);
-			var ptrToObjHandle = Marshal.ReadIntPtr(userdata);
-			var handleToObj = GCHandle.FromIntPtr(ptrToObjHandle);
-			handleToObj.Free();
-			return 0;
+			new KeyValuePair<string, int>("__add", (int)BinaryOp.op_Addition),
+			new KeyValuePair<string, int>("__sub", (int)BinaryOp.op_Subtraction),
+			new KeyValuePair<string, int>("__mul", (int)BinaryOp.op_Multiply),
+			new KeyValuePair<string, int>("__div", (int)BinaryOp.op_Division),
+			new KeyValuePair<string, int>("__mod", (int)BinaryOp.op_Modulus),
+
+			new KeyValuePair<string, int>("__eq", (int)BinaryOp.op_Equality),
+			new KeyValuePair<string, int>("__lt", (int)BinaryOp.op_LessThan),
+			new KeyValuePair<string, int>("__le", (int)BinaryOp.op_LessThanOrEqual),
+
+		};
+
+		internal enum UnaryOp
+		{
+			op_UnaryNegation,
 		}
 
-		// [-0, +1, -]
+		static readonly KeyValuePair<string, int>[] unaryOps = new KeyValuePair<string, int>[]
+		{
+			new KeyValuePair<string, int>("__unm", (int)UnaryOp.op_UnaryNegation),
+		};
+
+
+				// [-0, +1, -]
 		int NewObjectMetatable(string metaTableName)
 		{
 			if (Api.luaL_newmetatable(L, metaTableName) == 1)
@@ -1441,16 +1324,30 @@ namespace lua
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = false
 
-				Api.lua_pushcclosure(L, MetaIndexFunction, 0);
+				foreach (var ops in binaryOps)
+				{
+					Api.lua_pushinteger(L, (int)ops.Value);
+					Api.lua_pushcclosure(L, MetaMethod.MetaBinaryOpFunction, 1);
+					Api.lua_setfield(L, -2, ops.Key);
+				}
+
+				foreach(var ops in unaryOps)
+				{
+					Api.lua_pushinteger(L, (int)ops.Value);
+					Api.lua_pushcclosure(L, MetaMethod.MetaUnaryOpFunction, 1);
+					Api.lua_setfield(L, -2, ops.Key);
+				}
+
+				Api.lua_pushcclosure(L, MetaMethod.MetaIndexFunction, 0);
 				Api.lua_setfield(L, -2, "__index");
 
-				Api.lua_pushcclosure(L, MetaNewIndexFunction, 0);
+				Api.lua_pushcclosure(L, MetaMethod.MetaNewIndexFunction, 0);
 				Api.lua_setfield(L, -2, "__newindex");
 
-				Api.lua_pushcclosure(L, MetaToStringFunction, 0);
+				Api.lua_pushcclosure(L, MetaMethod.MetaToStringFunction, 0);
 				Api.lua_setfield(L, -2, "__tostring");
 
-				Api.lua_pushcclosure(L, MetaGcFunction, 0);
+				Api.lua_pushcclosure(L, MetaMethod.MetaGcFunction, 0);
 				Api.lua_setfield(L, -2, "__gc");
 
 				return 1;
@@ -1461,7 +1358,7 @@ namespace lua
 
 		// Invoking Lua Function
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		static int HandleLuaFunctionInvokingError(lua_State L)
+		static int HandleLuaFunctionInvokingError(IntPtr L)
 		{
 			var err = Api.lua_tostring(L, -1);
 			Api.lua_pop(L, 1);
@@ -1489,7 +1386,7 @@ namespace lua
 			}
 		}
 
-		public static string DebugStack(lua_State L)
+		public static string DebugStack(IntPtr L)
 		{
 			var top = Api.lua_gettop(L);
 			var sb = new System.Text.StringBuilder();

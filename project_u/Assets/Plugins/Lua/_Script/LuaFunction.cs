@@ -102,7 +102,7 @@ namespace lua
 
 		
 
-		internal static LuaFunction MakeRefTo(Lua L, int idx)
+		public static LuaFunction MakeRefTo(Lua L, int idx)
 		{
 			Debug.Assert(Api.lua_isfunction(L, idx));
 			return new LuaFunction(L, idx);

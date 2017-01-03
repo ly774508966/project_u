@@ -523,7 +523,6 @@ namespace lua.test
 		{
 			Api.lua_settop(L, 0);
 
-			var stackTop = Api.lua_gettop(L);
 			Api.luaL_dostring(L,
 				"return function()\n" +
 				"  Vector3 = csharp.import('UnityEngine.Vector3, UnityEngine')\n" +
@@ -862,6 +861,49 @@ namespace lua.test
 				Assert.AreEqual(bytes[i], outBytes[i]);
 			}
 			Api.lua_settop(L, stackTop);
+		}
+
+		[Test]
+		public void TestOperator()
+		{
+			Api.lua_settop(L, 0);
+
+			Api.luaL_dostring(L, "return function(a, b) return a + b end");
+			Api.lua_pushvalue(L, -1);
+			L.PushValue(new Vector3(1, 2, 3));
+			L.PushValue(new Vector3(2, 3, 4));
+			L.Call(2, 1);
+			var ret = (Vector3)L.ValueAt(-1);
+			Assert.AreEqual(3f, ret.x);
+			Assert.AreEqual(5f, ret.y);
+			Assert.AreEqual(7f, ret.z);
+			Api.lua_pop(L, 2);
+
+
+			Api.luaL_dostring(L, "return function(a, b) return a - b end");
+			Api.lua_pushvalue(L, -1);
+			L.PushValue(new Vector3(1, 2, 3));
+			L.PushValue(new Vector3(2, 3, 4));
+			L.Call(2, 1);
+			ret = (Vector3)L.ValueAt(-1);
+			Assert.AreEqual(-1f, ret.x);
+			Assert.AreEqual(-1f, ret.y);
+			Assert.AreEqual(-1f, ret.z);
+			Api.lua_pop(L, 2);
+
+			Api.luaL_dostring(L, "return function(a) return -a end");
+			Api.lua_pushvalue(L, -1);
+			L.PushValue(new Vector3(1, 2, 3));
+			L.Call(1, 1);
+			ret = (Vector3)L.ValueAt(-1);
+			Assert.AreEqual(-1f, ret.x);
+			Assert.AreEqual(-2f, ret.y);
+			Assert.AreEqual(-3f, ret.z);
+			Api.lua_pop(L, 2);
+
+
+			Assert.AreEqual(0, Api.lua_gettop(L));
+
 		}
 
 

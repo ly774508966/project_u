@@ -80,11 +80,11 @@ namespace lua
 			get
 			{
 				var L = CheckValid();
-				var ret = 0;
 				L.PushRef(tableRef);
-				ret = Api.lua_len(L, -1);
+				Api.lua_len(L, -1);
+				var ret = Api.lua_tointeger(L, -1);
 				Api.lua_pop(L, 2);
-				return ret;
+				return (int)ret;
 			}
 		}
 

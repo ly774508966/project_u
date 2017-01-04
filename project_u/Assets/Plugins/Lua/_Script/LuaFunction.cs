@@ -1,5 +1,29 @@
-﻿using UnityEngine;
+﻿/*
+MIT License
+
+Copyright (c) 2016 xiaobin83
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+using UnityEngine;
 using System;
+using AOT;
 
 namespace lua
 {
@@ -106,6 +130,63 @@ namespace lua
 			Debug.Assert(Api.lua_isfunction(L, idx));
 			return new LuaFunction(L, idx);
 		}
-	
+
+
+
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		public static int LuaDelegate(IntPtr L)
+		{
+			try
+			{
+				return LuaDelegateInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int LuaDelegateInternal(IntPtr L)
+		{
+			var host = Lua.CheckHost(L);
+			var func = (System.Delegate)host.ObjectAt(Api.lua_upvalueindex(1));
+			var type = func.GetType();
+			var numArgs = Api.lua_gettop(L);
+
+			var refToDelegate = host.MakeRefTo(func);
+			try
+			{
+
+				bool isInvokingFromClass = false;
+				Api.lua_pushboolean(L, isInvokingFromClass);      // upvalue 1 --> isInvokingFromClass
+				host.PushRef(refToDelegate);                      // upvalue 2 --> userdata, first parameter of __index
+				Api.lua_pushstring(L, "Invoke");                  // upvalue 3 --> member name
+				Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
+				host.PushRef(refToDelegate);
+				for (int i = 1; i <= numArgs; ++i)
+				{
+					Api.lua_pushvalue(L, i);
+				}
+				host.Call(numArgs + 1, 1);
+			}
+			catch (Exception e)
+			{
+				host.Unref(refToDelegate);
+				throw e;
+			}
+			return 1;
+		}
+
+		public static LuaFunction CreateDelegate(Lua L, System.Delegate func)
+		{
+			L.PushObject(func);
+			Api.lua_pushcclosure(L, LuaDelegate, 1);
+			var f = MakeRefTo(L, -1);
+			Api.lua_pop(L, 1);
+			return f;
+		}
+
 	}
 }

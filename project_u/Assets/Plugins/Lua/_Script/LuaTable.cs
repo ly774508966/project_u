@@ -32,6 +32,14 @@ namespace lua
 		Lua L_;
 		int tableRef = Api.LUA_NOREF;
 
+		public LuaTable(Lua L)
+		{
+			L_ = L;
+			Api.lua_createtable(L, 0, 0);
+			tableRef = L.MakeRefAt(-1);
+			Api.lua_pop(L, 1);
+		}
+
 		LuaTable(Lua L, int idx)
 		{
 			L_ = L;
@@ -69,7 +77,7 @@ namespace lua
 			throw new System.InvalidOperationException("Lua vm already destroyed.");
 		}
 
-		internal void Push()
+		public void Push()
 		{
 			var L = CheckValid();
 			L.PushRef(tableRef);
@@ -130,6 +138,17 @@ namespace lua
 			}
 		}
 
+
+		public void SetDelegate(string name, System.Delegate func)
+		{
+			var L = CheckValid();
+			var f = LuaFunction.CreateDelegate(L, func);
+			Push();
+			f.Push();
+			Api.lua_setfield(L, -2, name);
+			Cache(name, renew: true, withFunc: f);
+		}
+
 		public void Invoke(string name, params object[] args)
 		{
 			var f = Cache(name);
@@ -139,12 +158,31 @@ namespace lua
 			}
 		}
 
+		public void InvokeStatic(string name, params object[] args)
+		{
+			var f = Cache(name);
+			if (f != null)
+			{
+				f.Invoke(null, args);
+			}
+		}
+
 		public object Invoke1(string name, params object[] args)
 		{
 			var f = Cache(name);
 			if (f != null)
 			{
 				return f.Invoke1(this, args);
+			}
+			return null;
+		}
+
+		public object InvokeStatic1(string name, params object[] args)
+		{
+			var f = Cache(name);
+			if (f != null)
+			{
+				return f.Invoke1(null, args);
 			}
 			return null;
 		}
@@ -159,12 +197,31 @@ namespace lua
 			return null;
 		}
 
+
+		public LuaTable InvokeMultiRetStatic(string name, params object[] args)
+		{
+			var f = Cache(name);
+			if (f != null)
+			{
+				return f.InvokeMultiRet(null, args);
+			}
+			return null;
+		}
+
 		Dictionary<string, LuaFunction> cached = new Dictionary<string, LuaFunction>();
-		LuaFunction Cache(string name)
+		LuaFunction Cache(string name, bool renew = false, LuaFunction withFunc = null)
 		{
 			LuaFunction f = null;
 			if (cached.TryGetValue(name, out f))
-				return f;
+			{
+				if (!renew)
+					return f;
+
+				// renew, dispose current
+				f.Dispose();
+				if (withFunc != null)
+					cached[name] = withFunc;
+			}
 			var L = CheckValid();
 			var top = Api.lua_gettop(L);
 			Push();

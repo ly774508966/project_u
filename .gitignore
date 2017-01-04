@@ -8,3 +8,4 @@ project_u/obj
 *.orig
 *.orig.meta
 *.vscode
+.DS_Store

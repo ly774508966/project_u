@@ -933,6 +933,27 @@ namespace lua.test
 			}
 		}
 
+		double HaveFun3(LuaTable self, int a, int b, LuaFunction func)
+		{
+			return (double)func.Invoke1(null, (a + b + c + (double)self["somevalue"]));
+		}
+
+		[Test]
+		public void TestSetDelegateToTableWithFunc()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table["somevalue"] = 20;
+				table.SetDelegate("Test", new System.Func<LuaTable, int, int, LuaFunction, double>(HaveFun3));
+				Api.luaL_dostring(L, 
+					"return function(t) return t:Test(3, 4, function(k) return k + 5 end) end");
+				table.Push();
+				L.Call(1, 1);
+				var val = Api.lua_tonumber(L, -1);
+				Assert.AreEqual(52.0, val);
+			}
+		}
+
 
 
 	}

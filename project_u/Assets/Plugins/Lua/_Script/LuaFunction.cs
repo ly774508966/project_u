@@ -54,7 +54,6 @@ namespace lua
 		{
 			var L = CheckValid();
 			var top = Api.lua_gettop(L);
-
 			try
 			{
 				Push();
@@ -75,32 +74,32 @@ namespace lua
 				}
 				else if (nrets == 1)
 				{
-					return L.ValueAt(-1);
+					var ret = L.ValueAt(-1);
+					Api.lua_settop(L, top);
+					return ret;
 				}
 				else
 				{
 					nrets = Api.lua_gettop(L) - top;
-
 					LuaTable ret = null;
 					
 					Api.lua_createtable(L, nrets, 0);
-					for (int i = nrets; i >= 1; i--)
+					for (int i = 0; i < nrets; ++i)
 					{
-						Api.lua_pushvalue(L, -i - 1); // value at -i - 1
-						Api.lua_seti(L, -2, nrets - i + 1);
+						Api.lua_pushvalue(L, top + i + 1);
+						Api.lua_seti(L, -2, i + 1);
 					}
 					ret = LuaTable.MakeRefTo(L, -1);
-
+					Api.lua_settop(L, top);
 					return ret;
 				}
 			}
-			finally
+			catch (Exception e)
 			{
 				Api.lua_settop(L, top);
+				throw e;
 			}
 		}
-
-		
 
 		public static LuaFunction MakeRefTo(Lua L, int idx)
 		{

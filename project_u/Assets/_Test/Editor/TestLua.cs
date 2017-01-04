@@ -103,7 +103,15 @@ namespace lua.test
 		{
 			L = new Lua();
 			obj = new TestClass();
-			objRef = L.MakeRefTo(obj);
+			try
+			{
+				objRef = L.MakeRefTo(obj);
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError(e);
+				throw e;
+			}
 		}
 
 		[TestFixtureTearDown]
@@ -168,21 +176,24 @@ namespace lua.test
 		[Test]
 		public void TestCallMethodFromLua()
 		{
+
 			Api.lua_settop(L, 0);
 
 			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
+				"return function(obj)\n" + 
 				"  return obj:TestMethod()\n" + 
 				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
-			L.PushRef(objRef);
-			L.Call(1, 1);
-			Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
-			Assert.AreEqual(obj.test, Api.lua_tointeger(L, -1));
+			for (int i = 0; i < 1000; ++i)
+			{
+				Api.lua_pushvalue(L, -1);
+				L.PushRef(objRef);
+				L.Call(1, 1);
+				Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
+				Assert.AreEqual(obj.test, (int)Api.lua_tointeger(L, -1));
+				Api.lua_pop(L, 1);
+			}
+
 			Api.lua_pop(L, 1);
-
-
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
 
@@ -191,14 +202,10 @@ namespace lua.test
 		public void TestCallMethodFromLua_IncorrectSyntax()
 		{
 			Api.lua_settop(L, 0);
-
-			var stackTop = Api.lua_gettop(L);
 			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
+				"return function(obj)\n" + 
 				"  return obj.TestMethod()\n" + 
 				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
 			try
 			{
@@ -206,7 +213,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Api.lua_settop(L, stackTop);
+				Api.lua_settop(L, 0);
 				throw e;
 			}
 			Assert.Fail("never get here");
@@ -261,30 +268,6 @@ namespace lua.test
 			}
 			Assert.Fail("never get here");
 		}
-
-		[Test]
-		public void TestCallStaticMethodFromLua_IncorrectSyntax_PCALL()
-		{
-			Api.lua_settop(L, 0);
-
-			var stackTop = Api.lua_gettop(L);
-			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
-				"  return obj:TestStaticMethod()\n" + 
-				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
-			L.PushRef(objRef);
-			if (Api.LUA_OK != Api.lua_pcall(L, 1, 1, 0))
-			{
-				Assert.AreEqual(stackTop + 1, Api.lua_gettop(L));
-				Api.lua_pop(L, 1);
-			}
-			Assert.AreEqual(stackTop, Api.lua_gettop(L));
-
-			Assert.AreEqual(0, Api.lua_gettop(L));
-		}
-
 
 		[Test]
 		public void TestCallMethodWithParamFromLua()

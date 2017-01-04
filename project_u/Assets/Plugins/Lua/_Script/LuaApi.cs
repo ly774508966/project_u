@@ -391,14 +391,6 @@ namespace lua
 			return lua_yieldk(L, (n), IntPtr.Zero, null);
 		}
 
-
-
-		/*
-		** miscellaneous functions
-		*/
-		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern int lua_error(IntPtr L);
-
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern int lua_next(IntPtr L, int idx);
 
@@ -564,15 +556,6 @@ namespace lua
 		{
 			luaL_newlibtable(L, l);
 			luaL_setfuncs(L, l, 0);
-		}
-
-		public static void Assert(IntPtr L, bool condition, string message = "Assertion failed!")
-		{
-			if (!condition)
-			{
-				lua_pushstring(L, message);
-				lua_error(L);
-			}
 		}
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]

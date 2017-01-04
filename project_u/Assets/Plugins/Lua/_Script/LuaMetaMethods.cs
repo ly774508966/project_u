@@ -25,12 +25,14 @@ using System;
 using System.Runtime.InteropServices;
 using AOT;
 
+using lua_State = System.IntPtr;
+
 namespace lua
 {
 
 	internal class MetaMethod
 	{
-		static bool IsIndexingClassObject(IntPtr L)
+		static bool IsIndexingClassObject(lua_State L)
 		{
 			var isIndexingClassObject = false;
 			var top = Api.lua_gettop(L);
@@ -45,12 +47,24 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaConstructFunction(IntPtr L)
+		internal static int MetaConstructFunction(lua_State L)
+		{
+			try
+			{
+				return MetaConstructFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+		static int MetaConstructFunctionInternal(lua_State L)
 		{
 			Lua host = Lua.CheckHost(L);
 
 			var typeObj = host.ObjectAt(1);
-			Api.Assert(L, (typeObj != null) && (typeObj is System.Type), "Constructor needs type object.");
+			host.Assert((typeObj != null && (typeObj is System.Type)), "Constructor needs type object.");
 
 			var numArgs = Api.lua_gettop(L);
 			int[] luaArgTypes = Lua.luaArgTypes_NoArgs;
@@ -85,37 +99,42 @@ namespace lua
 			{
 				parameters = method.GetParameters();
 			}
+
 			if (method != null)
 			{
 				var ctor = (System.Reflection.ConstructorInfo)method;
-				try
+
+				IDisposable[] disposableArgs;
+				var args = host.ArgsFrom(parameters, 2, numArgs, out disposableArgs);
+				host.PushObject(ctor.Invoke(args));
+				if (disposableArgs != null)
 				{
-					IDisposable[] disposableArgs;
-					var args = host.ArgsFrom(parameters, 2, numArgs, out disposableArgs);
-					host.PushObject(ctor.Invoke(args));
-					if (disposableArgs != null)
+					foreach (var d in disposableArgs)
 					{
-						foreach (var d in disposableArgs)
-						{
-							if (d != null) d.Dispose();
-						}
+						if (d != null) d.Dispose();
 					}
 				}
-				catch (Exception e)
-				{
-					Lua.ThrowLuaException(L, e);
-				}
+				return 1;
 			}
-			else
-			{
-				Api.Assert(L, false, string.Format("No proper constructor available, calling {0}", Lua.GetLuaInvokingSigniture("ctor", luaArgTypes)));
-				Api.lua_pushnil(L);
-			}
-			return 1;
+			host.Assert(false, string.Format("No proper constructor available, calling {0}", Lua.GetLuaInvokingSigniture("ctor", luaArgTypes)));
+			return 1; // never get here , avoiding compile error
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaIndexFunction(IntPtr L)
+		internal static int MetaIndexFunction(lua_State L)
+		{
+			try
+			{
+				return MetaIndexFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int MetaIndexFunctionInternal(lua_State L)
 		{
 			var host = Lua.CheckHost(L);
 
@@ -134,7 +153,7 @@ namespace lua
 				typeObject = thisObject.GetType();
 			}
 
-			Api.Assert(L, typeObject != null, "Should has a type.");
+			host.Assert(typeObject != null, "Should have a type");
 
 			if (Api.lua_isinteger(L, 2))
 			{
@@ -160,7 +179,20 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaNewIndexFunction(IntPtr L)
+		internal static int MetaNewIndexFunction(lua_State L)
+		{
+			try
+			{
+				return MetaNewIndexFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int MetaNewIndexFunctionInternal(lua_State L)
 		{
 			var host = Lua.CheckHost(L);
 
@@ -179,7 +211,7 @@ namespace lua
 				typeObject = thisObject.GetType();
 			}
 
-			Api.Assert(L, typeObject != null, "Should has a type.");
+			host.Assert(typeObject != null, "Should has a type.");
 
 			if (Api.lua_isnumber(L, 2))
 			{
@@ -216,7 +248,20 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaToStringFunction(IntPtr L)
+		internal static int MetaToStringFunction(lua_State L)
+		{
+			try
+			{
+				return MetaToStringFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int MetaToStringFunctionInternal(lua_State L)
 		{
 			var host = Lua.CheckHost(L);
 			var thisObject = host.ValueAt(1);
@@ -225,7 +270,19 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaGcFunction(IntPtr L)
+		internal static int MetaGcFunction(lua_State L)
+		{
+			try
+			{
+				return MetaGcFunctionInternal(L);
+			}
+			catch (Exception)
+			{
+				return 0;
+			}
+		}
+
+		static int MetaGcFunctionInternal(lua_State L)
 		{
 			var userdata = Api.lua_touserdata(L, 1);
 			var ptrToObjHandle = Marshal.ReadIntPtr(userdata);
@@ -235,23 +292,32 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaBinaryOpFunction(IntPtr L)
+		internal static int MetaBinaryOpFunction(lua_State L)
 		{
+			try
+			{
+				return MetaBinaryOpFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int MetaBinaryOpFunctionInternal(lua_State L)
+		{
+			var host = Lua.CheckHost(L);
 			var opValue = Api.lua_tointeger(L, Api.lua_upvalueindex(1));
 			var op = (Lua.BinaryOp)opValue;
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
 			if (objectArg == IntPtr.Zero)
 			{
 				objectArg = Api.luaL_testudata(L, 2, Lua.objectMetaTable);
-				if (objectArg == IntPtr.Zero)
-				{
-					Lua.ThrowLuaException(L, string.Format("Binary op {0} called on unexpected values.", op));
-				}
+				host.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
 			}
 			var obj = Lua.UdataToObject(objectArg);
 			var type = obj.GetType();
-
-			var host = Lua.CheckHost(L);
 
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).
@@ -268,18 +334,27 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		internal static int MetaUnaryOpFunction(IntPtr L)
+		internal static int MetaUnaryOpFunction(lua_State L)
 		{
+			try
+			{
+				return MetaUnaryOpFunctionInternal(L);
+			}
+			catch (Exception e)
+			{
+				Lua.PushErrorObject(L, e.Message);
+				return 1;
+			}
+		}
+
+		static int MetaUnaryOpFunctionInternal(lua_State L)
+		{
+			var host = Lua.CheckHost(L);
 			var op = (Lua.UnaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
-			if (objectArg == IntPtr.Zero)
-			{
-				Lua.ThrowLuaException(L, string.Format("Binary op {0} called on unexpected values.", op));
-			}
+			host.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
 			var obj = Lua.UdataToObject(objectArg);
 			var type = obj.GetType();
-
-			var host = Lua.CheckHost(L);
 
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).

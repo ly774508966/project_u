@@ -848,6 +848,37 @@ namespace lua.test
 		}
 
 		[Test]
+		public void TestPushBytesAsLuaString_UsePushArray()
+		{
+			Api.lua_settop(L, 0);
+
+			var stackTop = Api.lua_gettop(L);
+
+			var bytes = new byte[30];
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				bytes[i] = (byte)Random.Range(0, 255);
+			}
+			bytes[0] = 0;
+
+			Api.luaL_dostring(L, 
+				"return function(s)\n" +
+				"  return s\n" +
+				"end");
+			Assert.True(Api.lua_isfunction(L, -1));
+			L.PushArray(bytes);
+			Assert.True(Api.lua_isstring(L, -1));
+			L.Call(1, 1);
+			var outBytes = Api.lua_tobytes(L, -1);
+			Assert.AreEqual(30, outBytes.Length);
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				Assert.AreEqual(bytes[i], outBytes[i]);
+			}
+			Api.lua_settop(L, stackTop);
+		}
+
+		[Test]
 		public void TestOperator()
 		{
 			Api.lua_settop(L, 0);

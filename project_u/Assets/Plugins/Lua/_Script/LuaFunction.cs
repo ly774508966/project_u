@@ -53,6 +53,15 @@ namespace lua
 			throw new System.InvalidOperationException("Lua vm already destroyed.");
 		}
 
+		public LuaFunction Retain()
+		{
+			var L = CheckValid();
+			Push();
+			var ret = new LuaFunction(L, -1);
+			Api.lua_pop(L, 1);
+			return ret;
+		}
+
 		internal void Push()
 		{
 			var L = CheckValid();
@@ -152,7 +161,6 @@ namespace lua
 		{
 			var host = Lua.CheckHost(L);
 			var func = (System.Delegate)host.ObjectAt(Api.lua_upvalueindex(1));
-			var type = func.GetType();
 			var numArgs = Api.lua_gettop(L);
 
 			var refToDelegate = host.MakeRefTo(func);
@@ -178,6 +186,15 @@ namespace lua
 				throw e;
 			}
 			return 1;
+		}
+
+		public static LuaFunction NewFunction(Lua L, string luaFunctionScript)
+		{
+			Api.luaL_loadstring(L, string.Format("return {0}", luaFunctionScript));
+			L.Call(0, 1);
+			var func = MakeRefTo(L, -1);
+			Api.lua_pop(L, 1);
+			return func;
 		}
 
 		public static LuaFunction CreateDelegate(Lua L, System.Delegate func)

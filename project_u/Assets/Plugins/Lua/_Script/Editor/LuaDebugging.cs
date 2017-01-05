@@ -47,42 +47,39 @@ namespace lua
 
 				try
 				{
-					if (!Api.luaL_dostring(L,
+					Api.luaL_dostring(L,
+						"return function()" +
+						"  local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n"	+
 						"  local json =	require 'json'\n" +
 						"  local debuggee =	require	'vscode-debuggee'\n" +
 						"  local startType,	startResult	= debuggee.start(json)\n" +
-						"  local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n"	+
 						"  Debug.LogWarning('start lua debugging: '.. tostring(startType) .. ',	' .. tostring(startResult))\n" +
-						"  return debuggee.poll, debuggee._debug"))
+						"  return debuggee.poll, debuggee._debug\n" + 
+						"end");
+					L.Call(0, 2);
+					debuggeePoll = LuaFunction.MakeRefTo(L, -2);
+					debuggee_Debug = LuaFunction.MakeRefTo(L, -1);
+					LuaBehaviour.debuggeePoll = delegate ()
 					{
-						debuggeePoll = LuaFunction.MakeRefTo(L, -2);
-						debuggee_Debug = LuaFunction.MakeRefTo(L, -1);
-						LuaBehaviour.debuggeePoll = delegate() {
-							try
-							{
-								debuggeePoll.Invoke();
-							}
-							catch (Exception e)
-							{
-								Debug.LogError(e.Message);
-								LuaBehaviour.debuggeePoll = null;
-								debuggeePoll.Dispose();
-								debuggeePoll = null;
-								debuggee_Debug.Dispose();
-								debuggee_Debug = null;
-							}
-						};
-					}
-					else
-					{
-						Debug.LogError("Cannot start debuggee");
-					}
+						try
+						{
+							debuggeePoll.Invoke();
+						}
+						catch (Exception e)
+						{
+							Debug.LogError(e.Message);
+							LuaBehaviour.debuggeePoll = null;
+							debuggeePoll.Dispose();
+							debuggeePoll = null;
+							debuggee_Debug.Dispose();
+							debuggee_Debug = null;
+						}
+					};
 				}
 				catch (Exception e)
 				{
-					Debug.LogError(e.Message);
+					Debug.LogErrorFormat("Cannot start debuggee {0}", e.Message);
 				}
-
 				Api.lua_settop(L, top);
 			}
 		}

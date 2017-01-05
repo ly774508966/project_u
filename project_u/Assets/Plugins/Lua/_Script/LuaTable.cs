@@ -218,7 +218,8 @@ namespace lua
 					return f;
 
 				// renew, dispose current
-				f.Dispose();
+				if (f != null)
+					f.Dispose();
 				if (withFunc != null)
 					cached[name] = withFunc;
 			}

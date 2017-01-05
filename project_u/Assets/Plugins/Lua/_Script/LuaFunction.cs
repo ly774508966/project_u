@@ -170,6 +170,7 @@ namespace lua
 					Api.lua_pushvalue(L, i);
 				}
 				host.Call(numArgs + 1, 1);
+				host.Unref(refToDelegate);
 			}
 			catch (Exception e)
 			{

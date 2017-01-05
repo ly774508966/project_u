@@ -12,15 +12,31 @@ local breaker
 
 local onError = nil
 
-local Debug = csharp.import('UnityEngine.Debug, UnityEngine')
-local print = Debug.Log
-local tostring = tostring
-
 local function defaultOnError(e)
 	print('****************************************************')
 	print(e)
 	print('****************************************************')
 end
+
+
+if not setfenv then -- Lua 5.2+
+  -- based on http://lua-users.org/lists/lua-l/2010-06/msg00314.html
+  -- this assumes f is a function
+  local function findenv(f)
+    local level = 1
+    repeat
+      local name, value = debug.getupvalue(f, level)
+      if name == '_ENV' then return level, value end
+      level = level + 1
+    until name == nil
+    return nil end
+  getfenv = function (f) return(select(2, findenv(f)) or _G) end
+  setfenv = function (f, t)
+    local level = findenv(f)
+    if level then debug.setupvalue(f, level, t) end
+    return f end
+end
+
 
 -------------------------------------------------------------------------------
 local sethook = debug.sethook
@@ -225,20 +241,6 @@ local function createHaltBreaker()
 	} 
 end
 
--------------------------------------------------------------------------------
-local _debug = {}
-function debuggee._debug(what)
-	_debug[what] = true
-end
-
-local function _debug_hook()
-	if _debug['which_line'] then
-		local info = debug.getinfo(3, 'Sl')
-		print('[debuggee]' .. info.source .. ':' .. info.currentline)
-		_debug['which_line'] = false
-	end
-end
-
 local function createPureBreaker()
 	local lineBreakCallback = nil
 	local breakpointsPerPath = {}
@@ -263,18 +265,15 @@ local function createPureBreaker()
 		end
 
 		if foundPath then
-			print('chunkNameToPath, \n' .. chunkname .. '\n-> '.. foundPath)
  			chunknameToPathCache[chunkname] = foundPath			
 		end
 		return foundPath
 	end
 
 	local entered = false
-	local function hookfunc(call_type, lineNumber)
+	local function hookfunc()
 		if entered then return false end
 		entered = true
-
-		_debug_hook()
 
 		if lineBreakCallback then
 			lineBreakCallback()
@@ -295,7 +294,6 @@ local function createPureBreaker()
 
 	return {
 		setBreakpoints = function(path, lines)
-			print('bp: ' .. path .. ':' .. table.concat(lines, ':'))
 			local t = {}
 			local verifiedLines = {}
 			for _, ln in ipairs(lines) do
@@ -344,7 +342,7 @@ end
 -- 센드는 블럭이어도 됨.
 local function sendMessage(msg)
 	local body = json.encode(msg)
-	print('SENDING:  ' .. body)	
+	--print('SENDING:  ' .. body)	
 	sendFully('#' .. #body .. '\n' .. body)
 end
 
@@ -371,7 +369,7 @@ local function debugLoop()
 	nextVarRef = 1
 	while true do
 		local msg = recvMessage()
-		print('RECEIVED: ' .. json.encode(msg))
+		--print('RECEIVED: ' .. json.encode(msg))
 		
 		local fn = handlers[msg.command]
 		if fn then
@@ -383,15 +381,12 @@ local function debugLoop()
 				break;
 			end
 		else
-			print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
+			--print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
 		end
 	end
 	storedVariables = {}
 	nextVarRef = 1
 end
-
-
-
 
 -------------------------------------------------------------------------------
 local sockArray = {}
@@ -448,7 +443,7 @@ function debuggee.poll()
 		if e == 'timeout' then break end
 
 		local msg = recvMessage()
-		print('POLL-RECEIVED: ' .. json.encode(msg))
+		--print('POLL-RECEIVED: ' .. json.encode(msg))
 		
 		if msg.command == 'pause' then
 			debuggee.enterDebugLoop(1)
@@ -540,7 +535,6 @@ end
 
 -------------------------------------------------------------------------------
 _G.__halt__ = function()
-	print('__halt__')
 	baseDepth = breaker.stackOffset.halt
 	startDebugLoop()
 end
@@ -564,6 +558,13 @@ function debuggee.enterDebugLoop(depth, what)
 	startDebugLoop()
 	return true
 end
+
+-------------------------------------------------------------------------------
+
+function debuggee._debug(arg, ...)
+	
+end
+
 
 -------------------------------------------------------------------------------
 -- ★★★ https://github.com/Microsoft/vscode/blob/a3e2b3d975dcaf85ca4f40486008ce52b31dbdec/src/vs/workbench/parts/debug/common/debugProtocol.d.ts

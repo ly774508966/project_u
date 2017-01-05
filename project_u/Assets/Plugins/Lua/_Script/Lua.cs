@@ -953,6 +953,7 @@ namespace lua
 
 		public static bool TestError(IntPtr L, int idx, out string errorMessage)
 		{
+			// TODO: more info on message
 			var top = Api.lua_gettop(L);
 			if (Api.lua_istable(L, -1))
 			{
@@ -1550,9 +1551,8 @@ namespace lua
 			var ret = Api.lua_pcall(L, nargs, nresults, stackTop + 1);
 			if (ret != Api.LUA_OK)
 			{
-				Debug.LogError(DebugStack(L));
+				// TODO: Make some stack walk
 				var errWithTraceback = Api.lua_tostring(L, -1);
-				Debug.LogError("pcall error: " + errWithTraceback);
 				Api.lua_settop(L, stackTop);
 				throw new LuaException(errWithTraceback, ret);
 			}

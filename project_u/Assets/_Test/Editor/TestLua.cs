@@ -24,6 +24,7 @@ SOFTWARE.
 ﻿using UnityEngine;
 using System.Collections;
 using NUnit.Framework;
+using AOT;
 
 namespace lua.test
 {
@@ -888,6 +889,71 @@ namespace lua.test
 			Assert.AreEqual(0, Api.lua_gettop(L));
 
 		}
+
+		int c = 20;
+		int HaveFun(int a, int b)
+		{
+			return a + b + c;
+		}
+
+
+
+		[Test]
+		public void TestSetDelegateToTable()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table.SetDelegate("Test", new System.Func<int, int, int>(HaveFun));
+				var ret = table.InvokeStatic1("Test", 1, 2);
+				Assert.AreEqual(23.0, (double)ret);
+			}
+		}
+
+		int HaveFun2(LuaTable self, int a, int b)
+		{
+			return (int)(a + b + c + (double)self["somevalue"]);
+		}
+
+		[Test]
+		public void TestSetDelegateToTableWithSelf()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table["somevalue"] = 20;
+				table.SetDelegate("Test", new System.Func<LuaTable, int, int, int>(HaveFun2));
+				var ret = table.Invoke1("Test", 1, 2);
+				Assert.AreEqual(43.0, (double)ret);
+
+				Api.luaL_dostring(L, 
+					"return function(t) return t:Test(3, 4) end");
+				table.Push();
+				L.Call(1, 1);
+				var val = Api.lua_tonumber(L, -1);
+				Assert.AreEqual(47.0, val);
+			}
+		}
+
+		double HaveFun3(LuaTable self, int a, int b, LuaFunction func)
+		{
+			return (double)func.Invoke1(null, (a + b + c + (double)self["somevalue"]));
+		}
+
+		[Test]
+		public void TestSetDelegateToTableWithFunc()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table["somevalue"] = 20;
+				table.SetDelegate("Test", new System.Func<LuaTable, int, int, LuaFunction, double>(HaveFun3));
+				Api.luaL_dostring(L, 
+					"return function(t) return t:Test(3, 4, function(k) return k + 5 end) end");
+				table.Push();
+				L.Call(1, 1);
+				var val = Api.lua_tonumber(L, -1);
+				Assert.AreEqual(52.0, val);
+			}
+		}
+
 
 
 	}

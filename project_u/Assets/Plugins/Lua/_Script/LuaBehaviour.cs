@@ -358,11 +358,16 @@ namespace lua
 
 #if UNITY_EDITOR
 		public static System.Action debuggeePoll;
+		static int debuggeeUpdatedFrameCount = 0;
 
 		void LateUpdate()
 		{
-			if (debuggeePoll != null)
-				debuggeePoll();
+			if (debuggeeUpdatedFrameCount != Time.frameCount)
+			{
+				if (debuggeePoll != null)
+					debuggeePoll();
+				debuggeeUpdatedFrameCount = Time.frameCount;
+			}
 		}
 
 		public bool IsInitFuncDumped()

@@ -67,14 +67,24 @@ namespace lua
 				}
 				cached.Clear();
 				L_.Unref(tableRef);
+				L_ = null;
 			}
 		}
 
 		Lua CheckValid()
 		{
-			if (L_.valid)
+			if (L_ != null && L_.valid)
 				return L_;
-			throw new System.InvalidOperationException("Lua vm already destroyed.");
+			throw new System.InvalidOperationException("LuaTable already disposed.");
+		}
+
+		public LuaTable Retain()
+		{
+			var L = CheckValid();
+			Push();
+			var ret = new LuaTable(L, -1);
+			Api.lua_pop(L, 1);
+			return ret;
 		}
 
 		public void Push()
@@ -229,6 +239,10 @@ namespace lua
 			if (Api.lua_getfield(L, -1, name) == Api.LUA_TFUNCTION)
 			{
 				f = LuaFunction.MakeRefTo(L, -1);
+			}
+			else
+			{
+				Debug.LogErrorFormat("attempt to call a non-function '{0}' ", name);
 			}
 			cached[name] = f;
 			Api.lua_settop(L, top);

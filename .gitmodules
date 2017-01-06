@@ -15,4 +15,6 @@
 	url = https://github.com/harningt/luajson.git
 [submodule "libs/lua/VSCodeLuaDebug"]
 	path = libs/lua/VSCodeLuaDebug
-	url = https://github.com/devcat-studio/VSCodeLuaDebug.git
+	url = https://github.com/xiaobin83/VSCodeLuaDebug.git
+	branch = lua-5.3
+

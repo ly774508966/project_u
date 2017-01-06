@@ -24,6 +24,7 @@ SOFTWARE.
 ﻿using UnityEngine;
 using System.Collections;
 using NUnit.Framework;
+using AOT;
 
 namespace lua.test
 {
@@ -103,7 +104,15 @@ namespace lua.test
 		{
 			L = new Lua();
 			obj = new TestClass();
-			objRef = L.MakeRefTo(obj);
+			try
+			{
+				objRef = L.MakeRefTo(obj);
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError(e);
+				throw e;
+			}
 		}
 
 		[TestFixtureTearDown]
@@ -168,21 +177,24 @@ namespace lua.test
 		[Test]
 		public void TestCallMethodFromLua()
 		{
+
 			Api.lua_settop(L, 0);
 
 			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
+				"return function(obj)\n" + 
 				"  return obj:TestMethod()\n" + 
 				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
-			L.PushRef(objRef);
-			L.Call(1, 1);
-			Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
-			Assert.AreEqual(obj.test, Api.lua_tointeger(L, -1));
+			for (int i = 0; i < 1000; ++i)
+			{
+				Api.lua_pushvalue(L, -1);
+				L.PushRef(objRef);
+				L.Call(1, 1);
+				Assert.AreEqual(Api.LUA_TNUMBER, Api.lua_type(L, -1));
+				Assert.AreEqual(obj.test, (int)Api.lua_tointeger(L, -1));
+				Api.lua_pop(L, 1);
+			}
+
 			Api.lua_pop(L, 1);
-
-
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
 
@@ -191,14 +203,10 @@ namespace lua.test
 		public void TestCallMethodFromLua_IncorrectSyntax()
 		{
 			Api.lua_settop(L, 0);
-
-			var stackTop = Api.lua_gettop(L);
 			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
+				"return function(obj)\n" + 
 				"  return obj.TestMethod()\n" + 
 				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
 			try
 			{
@@ -206,7 +214,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Api.lua_settop(L, stackTop);
+				Api.lua_settop(L, 0);
 				throw e;
 			}
 			Assert.Fail("never get here");
@@ -261,30 +269,6 @@ namespace lua.test
 			}
 			Assert.Fail("never get here");
 		}
-
-		[Test]
-		public void TestCallStaticMethodFromLua_IncorrectSyntax_PCALL()
-		{
-			Api.lua_settop(L, 0);
-
-			var stackTop = Api.lua_gettop(L);
-			Api.luaL_dostring(L, 
-				"function Test(obj)\n" + 
-				"  return obj:TestStaticMethod()\n" + 
-				"end");
-			Api.lua_getglobal(L, "Test");
-			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
-			L.PushRef(objRef);
-			if (Api.LUA_OK != Api.lua_pcall(L, 1, 1, 0))
-			{
-				Assert.AreEqual(stackTop + 1, Api.lua_gettop(L));
-				Api.lua_pop(L, 1);
-			}
-			Assert.AreEqual(stackTop, Api.lua_gettop(L));
-
-			Assert.AreEqual(0, Api.lua_gettop(L));
-		}
-
 
 		[Test]
 		public void TestCallMethodWithParamFromLua()
@@ -864,6 +848,37 @@ namespace lua.test
 		}
 
 		[Test]
+		public void TestPushBytesAsLuaString_UsePushArray()
+		{
+			Api.lua_settop(L, 0);
+
+			var stackTop = Api.lua_gettop(L);
+
+			var bytes = new byte[30];
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				bytes[i] = (byte)Random.Range(0, 255);
+			}
+			bytes[0] = 0;
+
+			Api.luaL_dostring(L, 
+				"return function(s)\n" +
+				"  return s\n" +
+				"end");
+			Assert.True(Api.lua_isfunction(L, -1));
+			L.PushArray(bytes);
+			Assert.True(Api.lua_isstring(L, -1));
+			L.Call(1, 1);
+			var outBytes = Api.lua_tobytes(L, -1);
+			Assert.AreEqual(30, outBytes.Length);
+			for (int i = 0; i < bytes.Length; ++i)
+			{
+				Assert.AreEqual(bytes[i], outBytes[i]);
+			}
+			Api.lua_settop(L, stackTop);
+		}
+
+		[Test]
 		public void TestOperator()
 		{
 			Api.lua_settop(L, 0);
@@ -905,6 +920,135 @@ namespace lua.test
 			Assert.AreEqual(0, Api.lua_gettop(L));
 
 		}
+
+		int c = 20;
+		int HaveFun(int a, int b)
+		{
+			return a + b + c;
+		}
+
+
+
+		[Test]
+		public void TestSetDelegateToTable()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table.SetDelegate("Test", new System.Func<int, int, int>(HaveFun));
+				var ret = table.InvokeStatic1("Test", 1, 2);
+				Assert.AreEqual(23.0, (double)ret);
+			}
+		}
+
+		int HaveFun2(LuaTable self, int a, int b)
+		{
+			return (int)(a + b + c + (double)self["somevalue"]);
+		}
+
+		[Test]
+		public void TestSetDelegateToTableWithSelf()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table["somevalue"] = 20;
+				table.SetDelegate("Test", new System.Func<LuaTable, int, int, int>(HaveFun2));
+				var ret = table.Invoke1("Test", 1, 2);
+				Assert.AreEqual(43.0, (double)ret);
+
+				Api.luaL_dostring(L, 
+					"return function(t) return t:Test(3, 4) end");
+				table.Push();
+				L.Call(1, 1);
+				var val = Api.lua_tonumber(L, -1);
+				Assert.AreEqual(47.0, val);
+			}
+		}
+
+		double HaveFun3(LuaTable self, int a, int b, LuaFunction func)
+		{
+			return (double)func.Invoke1(null, (a + b + c + (double)self["somevalue"]));
+		}
+
+		[Test]
+		public void TestSetDelegateToTableWithFunc()
+		{
+			using (var table = new LuaTable(L))
+			{
+				table["somevalue"] = 20;
+				table.SetDelegate("Test", new System.Func<LuaTable, int, int, LuaFunction, double>(HaveFun3));
+				Api.luaL_dostring(L, 
+					"return function(t) return t:Test(3, 4, function(k) return k + 5 end) end");
+				table.Push();
+				L.Call(1, 1);
+				var val = Api.lua_tonumber(L, -1);
+				Assert.AreEqual(52.0, val);
+			}
+		}
+
+
+		void FuncThrowError()
+		{
+			throw new System.Exception("K");
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestCatchErrorInLua()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function(f) csharp.check_error(f()) end"))
+			{
+				f.Invoke(null, new System.Action(FuncThrowError));
+			}
+		}
+
+		void FuncNoError()
+		{
+			Debug.Log("I don't have problem");
+		}
+
+		[Test]
+		public void TestCatchErrorInLua_NoError()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function(f) csharp.check_error(f()) end"))
+			{
+				f.Invoke(null, new System.Action(FuncNoError));
+			}
+		}
+
+		[Test]
+		public void TestReturnBytesFromLua()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function() return csharp.as_bytes(string.pack('BBBB', 1, 2, 3, 4)) end"))
+			{
+				var ret = (byte[])f.Invoke1();
+				Assert.AreEqual(1, ret[0]);
+				Assert.AreEqual(2, ret[1]);
+				Assert.AreEqual(3, ret[2]);
+				Assert.AreEqual(4, ret[3]);
+			}
+
+		}
+
+
+		[Test]
+		public void TestHexDumpInBytesObject()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function()\n" +
+				" local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" +
+				" local b = csharp.as_bytes('asldjflaksdjfl;aksdjf;alskfjda;s')\n"+
+				" Debug.Log(tostring(b))\n" +
+				" return b\n" +
+				"end"))
+			{
+				f.Invoke1();
+			}
+
+		}
+
 
 
 	}

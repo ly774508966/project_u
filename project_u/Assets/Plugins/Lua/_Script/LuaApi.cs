@@ -363,9 +363,9 @@ namespace lua
 		}
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern int lua_pcallk(IntPtr L, int nargs, int nresults, int errfunc, IntPtr ctx, lua_KFunction k);
+		internal static extern int lua_pcallk(IntPtr L, int nargs, int nresults, int errfunc, IntPtr ctx, lua_KFunction k);
 
-		public static int lua_pcall(IntPtr L, int nargs, int nresults, int errfunc)
+		internal static int lua_pcall(IntPtr L, int nargs, int nresults, int errfunc)
 		{
 			return lua_pcallk(L, nargs, nresults, errfunc, IntPtr.Zero, null);
 		}

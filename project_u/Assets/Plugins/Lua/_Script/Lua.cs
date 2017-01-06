@@ -40,6 +40,14 @@ using AOT;
 
 namespace lua
 {
+	public class Config
+	{
+		// if array.Length > value, then array is passed as C# object.
+		// except byte[], bytes always copied to Lua state.
+		public static int PassAsObjectIfArrayLengthGreatThan = 30;
+
+	}
+
 	public class LuaException : Exception
 	{
 		public LuaException(string errorMessage)
@@ -99,19 +107,67 @@ namespace lua
 			{
 				Debug.LogErrorFormat("Alloc nsize = {0} failed: {1}", nsize, e.Message);
 				return IntPtr.Zero;
-            }
+			}
 		}
 
-		const string kLuaStub_SetupPaths = 
-			"return function(s, path, cpath)\n" + 
+		LuaTable csharp;
+
+		const string kLuaStub_SetupSearcher = 
+			"return function(s)\n" + 
 #if UNITY_EDITOR
 			"  table.insert(package.searchers, 2, s)\n" + // after preload
-			"  package.path = path .. ';' .. package.path\n" + 
-			"  package.cpath = cpath .. ';' .. package.cpath\n" +
 #else
 			"  package.searchers = { package.searchers[1], s }\n" + // keep only preload
 #endif
-			"end\n";
+			"end";
+
+		// http://lua-users.org/wiki/HexDump
+		const string kLuaStub_HexDump =
+			"function (buf)\n" +
+			"  local s = { '' }\n" + 
+			"  for byte=1, #buf, 16 do\n" +
+			"    local chunk = buf:sub(byte, byte+15)\n" +
+			"    s[1] = s[1] .. string.format('%08X\t',byte-1)\n" +
+			"    chunk:gsub('.', function (c) s[1] = s[1] .. string.format('%02X ', string.byte(c)) end)\n" +
+			"    s[1] = s[1] .. string.rep('\t',3*(16-#chunk))\n" +
+			"    s[1] = s[1] .. chunk:gsub('[^%a%d]','.') .. '\\n'\n"+
+			"  end\n" +
+			"  return s[1]\n" +
+			"end";
+
+		const string kLuaStub_ErrorObject =
+			"local error_meta = { __tostring = function(e) return e.message end }\n" +
+			"local table_pack, setmetatable, getmetatable, assert = table.pack, setmetatable, getmetatable, assert\n" +
+			"return function(message) -- push error object\n" + 
+			"  local errObj = { message = message }\n" +
+			"  setmetatable(errObj, error_meta)\n" +
+			"  return errObj\n" +
+			"end,\n" +
+			"function(...) -- check error object, assert if got error, returns all value got if no error\n" +
+			"  local r = table_pack(...)\n" + 
+			"  if #r > 0 then\n" +
+			"    local e = r[1] \n" +
+			"    local m = getmetatable(e)\n" +
+			"    if m == error_meta then assert(false, 'invoking native function failed: ' .. e.message) end\n" +
+			"  end\n" +
+			"  return ... -- nothing to check\n" +
+			"end";
+
+		LuaFunction pushError;
+		LuaFunction checkError;
+
+		const string kLuaStub_Bytes =
+			"local hex_dump = csharp.hex_dump\n" +
+			"local bytes_meta = { __tostring = function(t) return hex_dump(t[1]) end}\n" +
+			"local assert, type = assert, type\n" +
+			"return function(s) -- as_bytes, convert string to bytes object\n" +
+			"  assert(type(s) == 'string', 'expected string, but '.. type(s) .. ' got')\n" +
+			"  return setmetatable({s}, bytes_meta)\n" +
+			"end,\n" +
+			"function(b) -- return string if is a bytes object, or nil\n" +
+			"  return getmetatable(b) == bytes_meta and b[1] or nil\n" +
+			"end";
+		LuaFunction testBytes;
 
 
 
@@ -129,53 +185,105 @@ namespace lua
 			SetHost();
 
 			Api.luaL_requiref(L, "csharp", OpenCsharpLib, 1);
+			csharp = LuaTable.MakeRefTo(this, -1);
 			Api.lua_pop(L, 1); // pop csharp
 
+			// Helpers
+			try
+			{
+				// csharp.test_error && csharp.push_error
+				DoString(kLuaStub_ErrorObject, 2);
+				// -1 check, -2 push
+				checkError = LuaFunction.MakeRefTo(this, -1);
+				pushError = LuaFunction.MakeRefTo(this, -2);
+				// also set to csharp table
+				csharp["check_error"] = checkError;
+				Api.lua_pop(L, 2); // pop
+
+				// ------ BEFORE THIS LINE, ERROR OBJECET is not prepared, so all errors pushed as string
+
+				// hex dump
+				var f = LuaFunction.NewFunction(this, kLuaStub_HexDump);
+				csharp["hex_dump"] = f;
+				f.Dispose();
+
+				// addPath (C#)
+				addPath = LuaFunction.NewFunction(this, kLuaStub_AddPath);
+
+
+
+				// csharp.to_bytes (lua) and test_bytes (C#)
+				DoString(kLuaStub_Bytes, 2);
+				// -1 test_bytes (C#), -2 as_bytes (Lua)
+				testBytes = LuaFunction.MakeRefTo(this, -1);
+				var asBytes = LuaFunction.MakeRefTo(this, -2);
+				csharp["as_bytes"] = asBytes;
+				asBytes.Dispose();
+
+				Api.lua_pop(L, 2); // pop those
+			}
+			catch (Exception e)
+			{
+				Debug.LogError(e.Message);
+				throw e;
+			}
+
+
 			// override searcher (insert in the second place, and also set path and cpath)
- 			// Searcher provided here will load all script/modules except modules/cmodules running only
+			// Searcher provided here will load all script/modules except modules/cmodules running only
 			// in editor. Lua will handle those modules itself.
 			try
 			{
-				Api.luaL_dostring(L, kLuaStub_SetupPaths);
+				DoString(kLuaStub_SetupSearcher, 1);
 				Api.lua_pushcclosure(L, Searcher, 0);
-#if UNITY_EDITOR
-				// path
-				var path = Application.dataPath;
-				path = System.IO.Path.Combine(path, "Plugins");
-				path = System.IO.Path.Combine(path, "Lua");
-				path = System.IO.Path.Combine(path, "Modules");
-				path = path.Replace('\\', '/');
-				var luaPath = path + "/?.lua;" + path +"/?/init.lua";
-				Api.lua_pushstring(L, luaPath);
-
-
-				// cpath
-				path = Application.dataPath;
-				path = System.IO.Path.Combine(path, "Plugins");
-				path = System.IO.Path.Combine(path, "Lua");
-				path = System.IO.Path.Combine(path, "Windows");
-				if (IntPtr.Size > 4)
-					path = System.IO.Path.Combine(path, "x86_64");
-				else
-					path = System.IO.Path.Combine(path, "x86");
-				path = path.Replace('\\', '/');
-				var luaCPath = path + "/?.dll;"+path + "/?/init.dll";
-				Api.lua_pushstring(L, luaCPath);
-#else
-				Api.lua_pushnil(L);
-				Api.lua_pushnil(L);
-#endif
-
-				Call(3, 0);
+				Call(1, 0);
 			}
 			catch (Exception e)
 			{
 				Debug.LogError("Replace searchers failed." + e.Message);
 			}
+
+
+			// set default path
+#if UNITY_EDITOR
+			// path
+			var path = Application.dataPath;
+			path = System.IO.Path.Combine(path, "Plugins");
+			path = System.IO.Path.Combine(path, "Lua");
+			path = System.IO.Path.Combine(path, "Modules");
+			path = path.Replace('\\', '/');
+			var luaPath = path + "/?.lua;" + path +"/?/init.lua";
+			AddPath(luaPath);
+
+			// cpath
+			path = Application.dataPath;
+			path = System.IO.Path.Combine(path, "Plugins");
+			path = System.IO.Path.Combine(path, "Lua");
+			path = System.IO.Path.Combine(path, "Windows");
+			if (IntPtr.Size > 4)
+				path = System.IO.Path.Combine(path, "x86_64");
+			else
+				path = System.IO.Path.Combine(path, "x86");
+			path = path.Replace('\\', '/');
+			var luaCPath = path + "/?.dll;"+path + "/?/init.dll";
+			AddCPath(luaCPath);
+#endif
 		}
 
 		public void Dispose()
 		{
+			checkError.Dispose();
+			checkError = null;
+
+			pushError.Dispose();
+			pushError = null;
+
+			testBytes.Dispose();
+			testBytes = null;
+
+			csharp.Dispose();
+			csharp = null;
+
 			Api.lua_close(L);
 			L = IntPtr.Zero;
 		}
@@ -185,6 +293,44 @@ namespace lua
 			if (l != null)
 				return l.L;
 			return IntPtr.Zero;
+		}
+
+		const string kLuaStub_AddPath = 
+			"function(p, path)\n" + 
+#if UNITY_EDITOR
+			"  package[p] = path .. ';' .. package[p]\n" +
+#endif
+			"end";
+		LuaFunction addPath;
+
+		public void AddCPath(string cpath)
+		{
+			addPath.Invoke(null, "cpath", cpath);
+		}
+
+		public void AddPath(string path)
+		{
+			addPath.Invoke(null, "path", path);
+		}
+
+		const string kLuaStub_ForbidGlobalVar =
+			"return function(forbid)\n" + 
+			"  if forbid then\n" +
+			"    setmetatable(_G, forbid and { __newindex = function(t, k, v) assert(false, 'set value on global table is forbidden.') end} or {})\n" +
+			"  end\n" +
+			"end";
+
+		public void ForbidGlobalVar(bool forbid)
+		{
+			Api.luaL_dostring(L, kLuaStub_ForbidGlobalVar);
+			Api.lua_pushboolean(L, forbid);
+			Call(1, 0);
+		}
+
+		public void SetGlobal(string name, object value)
+		{
+			PushValue(value);
+			Api.lua_setglobal(L, name);
 		}
 
 		public void RunScript(string scriptName)
@@ -208,6 +354,12 @@ namespace lua
 		public object Require(string scriptName)
 		{
 			Api.luaL_requiref(L, scriptName, LoadScript1, 0);
+			string errorMessage;
+			if (Lua.TestError(L, -1, out errorMessage))
+			{
+				Debug.LogError(errorMessage);
+				return null;
+			}
 			var ret = ValueAt(-1);
 			Api.lua_pop(L, 1);
 			return ret;
@@ -230,7 +382,7 @@ namespace lua
 				host = ObjectAtInternal(L, -1) as Lua;
 			}
 			Api.lua_settop(L, top);
-            if (host == null || host.L != L)
+			if (host == null || host.L != L)
 			{
 				throw new LuaException("__host not found or mismatch.");
 			}
@@ -247,34 +399,22 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int Searcher(IntPtr L)
 		{
+			var top = Api.lua_gettop(L);
+			var scriptName = Api.lua_tostring(L, 1);
 			try
 			{
-				return SearcherInternal(L);
-			}
-			catch (Exception e)
-			{
-				PushErrorObject(L, e.Message);
-				return 1;
-			}
-		}
-
-		static int SearcherInternal(IntPtr L)
-		{
-			var host = CheckHost(L);
-
-			var scriptName = Api.luaL_checkstring(L, 1);
-			string scriptPath = string.Empty;
-			try
-			{
+				var host = CheckHost(L);
+				string scriptPath = string.Empty;
 				host.LoadChunkFromFile(scriptName, out scriptPath);
 				host.PushValue(scriptPath);
+				return 2;
 			}
 			catch (Exception e)
 			{
-				Api.lua_pushnil(L);
-				Api.lua_pushstring(L, e.Message);
+				Api.lua_settop(L, top);
+				Api.lua_pushstring(L, string.Format("\n\terror loading module '{0}' {1}", scriptName, e.Message));
+				return 1;
 			}
-			return 2;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
@@ -415,14 +555,14 @@ namespace lua
 		{
 			var host = CheckHost(L);
 			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptPath = string.Empty;
 			try
 			{
-				string scriptPath;
 				host.LoadScriptInternal(scriptName, 1, out scriptPath);
 			}
 			catch (Exception e)
 			{
-				throw new Exception(string.Format("LoadScript \"{0}\" failed: {1}",	scriptName), e);
+				throw new Exception(string.Format("LoadScript \"{0}\" from path {1} failed:\n{2}", scriptName, scriptPath, e.Message));
 			}
 			return 1;
 		}
@@ -564,7 +704,6 @@ namespace lua
 			var bytes = new byte[output.Length];
 			output.Read(bytes, 0, bytes.Length);
 			return bytes;
-
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
@@ -577,7 +716,6 @@ namespace lua
 
 		internal const string objectMetaTable = "object_meta";
 		internal const string classMetaTable = "class_meta";
-		internal const string errorObjectMetaTable = "error_meta";
 
 		// [-0,	+1,	m]
  		// return 1 if Metatable of object is newly created. 
@@ -603,8 +741,11 @@ namespace lua
 
 		static object ObjectAtInternal(IntPtr L, int idx)
 		{
-			var userdata = Api.lua_touserdata(L, idx);
-			return UdataToObject(userdata);
+			var userdata = Api.luaL_testudata(L, idx, objectMetaTable);
+			if (userdata == IntPtr.Zero) userdata = Api.luaL_testudata(L, idx, classMetaTable);
+			if (userdata != IntPtr.Zero)
+				return UdataToObject(userdata);
+			return null;
 		}
 
 		internal static object UdataToObject(IntPtr userdata)
@@ -653,6 +794,25 @@ namespace lua
 			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, objReference);
 		}
 
+		byte[] TestBytes(int idx)
+		{
+			Api.lua_pushvalue(L, idx);
+			testBytes.Push(); // dont use invoke, preventing conversion from Lua -> C# before value is correct
+			Api.lua_insert(L, -2);
+			Call(1, 1);
+			if (Api.lua_isnil(L, -1))
+			{
+				Api.lua_pop(L, 1);
+				return null;
+			}
+			else // convert to bytes
+			{
+				var ret = Api.lua_tobytes(L, -1);
+				Api.lua_pop(L, 1);
+				return ret;
+			}
+		}
+
 		public object ValueAt(int idx)
 		{
 			var type = Api.lua_type(L, idx);
@@ -676,8 +836,16 @@ namespace lua
 					}
 				case Api.LUA_TSTRING:
 					return Api.lua_tostring(L, idx);
+
 				case Api.LUA_TTABLE:
+
+					var bytes = TestBytes(idx); // maybe a bytes
+					if (bytes != null)
+					{
+						return bytes;
+					}
 					return LuaTable.MakeRefTo(this, idx);
+
 				case Api.LUA_TFUNCTION:
 					return LuaFunction.MakeRefTo(this, idx);
 				case Api.LUA_TUSERDATA:
@@ -939,36 +1107,64 @@ namespace lua
 
 		internal static void PushErrorObject(IntPtr L, string message) // No Throw
 		{
-			Api.lua_newtable(L);
-			if (Api.luaL_newmetatable(L, errorObjectMetaTable) == 1)
+			try
 			{
-				const string toStringFunc = "return function(err) return err.message end";
-				Api.luaL_dostring(L, toStringFunc);
-				Api.lua_setfield(L, -2, "__tostring");
+				var host = CheckHost(L);
+				if (host.pushError != null) // pushError may not be prepared, 
+				{
+					host.pushError.Push();  // DO NOT use Invoke, or you have infinite recursive call
+					Api.lua_pushstring(L, message);
+					if (Api.LUA_OK != Api.lua_pcall(L, 1, 1, 0))
+					{
+						var err = Api.lua_tostring(L, -1);
+						Api.lua_pop(L, 1);
+						throw new LuaException(err); // err in push err, WTF, catches below 
+					}
+					// here we got error object on stack
+				}
+				else // host.pushError not ready
+				{
+					Api.lua_pushstring(L, message);
+				}
 			}
-			Api.lua_setmetatable(L, -2);
-			Api.lua_pushstring(L, message);
-			Api.lua_setfield(L, -2, "message");
+			catch (Exception e) // host not ready? host.pushError error? err in test err
+			{
+				Api.lua_pushstring(L, message + "\n" + e.Message); // have to left message + e.Message on stack, what's happing?
+			}
 		}
 
 		public static bool TestError(IntPtr L, int idx, out string errorMessage)
 		{
-			var top = Api.lua_gettop(L);
-			if (Api.lua_istable(L, -1))
+			try
 			{
-				Api.lua_getmetatable(L, -1);
-				Api.luaL_getmetatable(L, errorObjectMetaTable);
-				if (Api.lua_rawequal(L, -1, -2))
+				var host = CheckHost(L);
+				if (host.checkError != null) // huh, in Lua.Ctor, checkError may no be prepared
 				{
-					Api.lua_getfield(L, -2, "message");
-					errorMessage = Api.lua_tostring(L, -1);
-					Api.lua_settop(L, top);
-					return true;
+					Api.lua_pushvalue(L, idx);
+					host.checkError.Push(); // dont use Invoke. host.Call inside of it results an infinite recursive call.
+					Api.lua_insert(L, -2);
+					if (Api.LUA_OK != Api.lua_pcall(L, 1, 0, 0)) // do not use host.Call, or you have infinite recursive call.
+					{
+						// has error, test_error calls error() in lua script, catches here
+						errorMessage = Api.lua_tostring(L, -1);
+						Api.lua_pop(L, 1);
+						return true;
+					}
+					errorMessage = string.Empty; // correct
+					return false;
+				}
+				else
+				{
+					// if checkError not prepared, there is no error object
+					errorMessage = string.Empty;
+					return false;
 				}
 			}
-			Api.lua_settop(L, top);
-			errorMessage = string.Empty;
-			return false;
+			catch (Exception e) // host not ready? checkError error
+			{
+				errorMessage = "TestError failed: " + e.Message;
+				return true;
+			}
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
@@ -977,6 +1173,11 @@ namespace lua
 			try
 			{
 				return InvokeMethodInternal(L);
+			}
+			catch (System.Reflection.TargetInvocationException e)
+			{
+				PushErrorObject(L, e.InnerException.Message);
+				return 1;
 			}
 			catch (Exception e)
 			{
@@ -1187,6 +1388,51 @@ namespace lua
 			return 1;
 		}
 
+		public void PushArray(object value, bool byRef = false)
+		{
+			if (value == null)
+			{
+				Api.lua_pushnil(L);
+				return;
+			}
+
+			var type = value.GetType();
+			Debug.Assert(type.IsArray, "PushArray called with non-array value");
+			if (type.IsArray)
+			{
+				if (type == typeof(byte[]))
+				{
+					Api.lua_pushbytes(L, (byte[])value);
+					return;
+				}
+
+				if (byRef)
+				{
+					PushObject(value);
+					return;
+				}
+
+				// other primitive array?
+				var arr = (System.Array)value;
+				if (arr.Length <= Config.PassAsObjectIfArrayLengthGreatThan)
+				{
+					Api.lua_createtable(L, arr.Length, 0);
+					for (int i = 0; i < arr.Length; ++i)
+					{
+						PushValue(arr.GetValue(i));
+						Api.lua_seti(L, -2, i + 1);
+					}
+					return;
+				}
+
+				PushObject(value);
+			}
+			else
+			{
+				Api.lua_pushnil(L);
+			}
+		}
+
 		public void PushValue(object value)
 		{
 			if (value == null)
@@ -1198,14 +1444,9 @@ namespace lua
 			var type = value.GetType();
 			if (type.IsArray)
 			{
-				if (type == typeof(byte[]))
-				{
-					Api.lua_pushbytes(L, (byte[])value);
-					return;
-				}
-				// TODO: other primitive array
+				PushArray(value, byRef: true);
+				return;
 			}
-			// other arrays currently go below, push as an object
 
 			if (type.IsPrimitive)
 			{
@@ -1227,6 +1468,22 @@ namespace lua
 			else if (type == typeof(string))
 			{
 				Api.lua_pushstring(L, (string)value);
+			}
+			else if (type == typeof(LuaFunction))
+			{
+				var f = (LuaFunction)value;
+				f.Push();
+			}
+			else if (type == typeof(LuaTable))
+			{
+				var t = (LuaTable)value;
+				t.Push();
+			}
+			else if (typeof(System.Delegate).IsAssignableFrom(type))
+			{
+				var f = LuaFunction.CreateDelegate(this, (System.Delegate)value);
+				f.Push();
+				f.Dispose(); // safely Dispose here
 			}
 			else
 			{
@@ -1528,15 +1785,27 @@ namespace lua
 			return 0;
 		}
 
+		public void DoString(string luaScript, int nrets = 0)
+		{
+			var ret = Api.luaL_loadstring(L, luaScript);
+			if (ret != Api.LUA_OK)
+			{
+				var err = Api.lua_tostring(L, -1);
+				Api.lua_pop(L, 1);
+				throw new LuaException(err, ret);
+			}
+			Call(0, nrets);
+		}
+
 
 		// Invoking Lua Function
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int HandleLuaFunctionInvokingError(IntPtr L)
 		{
-			var err = Api.lua_tostring(L, -1);
+			var err = Api.lua_tostring(L, 1);
 			Api.luaL_traceback(L, L, err, 0);
 			err = Api.lua_tostring(L, -1);
-			Api.lua_pop(L, 2);
+			Api.lua_pop(L, 1);
 			PushErrorObject(L, err);
 			return 1;
 		}
@@ -1550,11 +1819,13 @@ namespace lua
 			var ret = Api.lua_pcall(L, nargs, nresults, stackTop + 1);
 			if (ret != Api.LUA_OK)
 			{
-				Debug.LogError(DebugStack(L));
-				var errWithTraceback = Api.lua_tostring(L, -1);
-				Debug.LogError("pcall error: " + errWithTraceback);
+				string errorMessage;
+				if (!TestError(L, -1, out errorMessage))
+				{
+					errorMessage = Api.lua_tostring(L, -1);
+				}
 				Api.lua_settop(L, stackTop);
-				throw new LuaException(errWithTraceback, ret);
+				throw new LuaException(errorMessage, ret);
 			}
 			else
 			{

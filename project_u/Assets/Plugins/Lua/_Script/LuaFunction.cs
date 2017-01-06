@@ -161,7 +161,6 @@ namespace lua
 		{
 			var host = Lua.CheckHost(L);
 			var func = (System.Delegate)host.ObjectAt(Api.lua_upvalueindex(1));
-			var type = func.GetType();
 			var numArgs = Api.lua_gettop(L);
 
 			var refToDelegate = host.MakeRefTo(func);

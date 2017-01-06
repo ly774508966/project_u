@@ -986,6 +986,70 @@ namespace lua.test
 		}
 
 
+		void FuncThrowError()
+		{
+			throw new System.Exception("K");
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestCatchErrorInLua()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function(f) csharp.check_error(f()) end"))
+			{
+				f.Invoke(null, new System.Action(FuncThrowError));
+			}
+		}
+
+		void FuncNoError()
+		{
+			Debug.Log("I don't have problem");
+		}
+
+		[Test]
+		public void TestCatchErrorInLua_NoError()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function(f) csharp.check_error(f()) end"))
+			{
+				f.Invoke(null, new System.Action(FuncNoError));
+			}
+		}
+
+		[Test]
+		public void TestReturnBytesFromLua()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function() return csharp.as_bytes(string.pack('BBBB', 1, 2, 3, 4)) end"))
+			{
+				var ret = (byte[])f.Invoke1();
+				Assert.AreEqual(1, ret[0]);
+				Assert.AreEqual(2, ret[1]);
+				Assert.AreEqual(3, ret[2]);
+				Assert.AreEqual(4, ret[3]);
+			}
+
+		}
+
+
+		[Test]
+		public void TestHexDumpInBytesObject()
+		{
+			using (var f = LuaFunction.NewFunction(L,
+				"function()\n" +
+				" local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n" +
+				" local b = csharp.as_bytes('asldjflaksdjfl;aksdjf;alskfjda;s')\n"+
+				" Debug.Log(tostring(b))\n" +
+				" return b\n" +
+				"end"))
+			{
+				f.Invoke1();
+			}
+
+		}
+
+
 
 	}
 }

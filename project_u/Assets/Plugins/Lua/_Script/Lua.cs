@@ -127,9 +127,9 @@ namespace lua
 			"  local s = { '' }\n" + 
 			"  for byte=1, #buf, 16 do\n" +
 			"    local chunk = buf:sub(byte, byte+15)\n" +
-			"    s[1] = s.output .. string.format('%08X',byte-1)\n" +
-			"    chunk:gsub('.', function (c) s[1] = s[1] .. string.format('%02X', string.byte(c)) end)\n" +
-			"    s[1] = s[1] .. string.rep(' ',3*(16-#chunk))\n" +
+			"    s[1] = s[1] .. string.format('%08X\t',byte-1)\n" +
+			"    chunk:gsub('.', function (c) s[1] = s[1] .. string.format('%02X ', string.byte(c)) end)\n" +
+			"    s[1] = s[1] .. string.rep('\t',3*(16-#chunk))\n" +
 			"    s[1] = s[1] .. chunk:gsub('[^%a%d]','.') .. '\\n'\n"+
 			"  end\n" +
 			"  return s[1]\n" +
@@ -148,7 +148,7 @@ namespace lua
 			"  if #r > 0 then\n" +
 			"    local e = r[1] \n" +
 			"    local m = getmetatable(e)\n" +
-			"    if m == error_meta then assert(false, e.message) end\n" +
+			"    if m == error_meta then assert(false, 'invoking native function failed: ' .. e.message) end\n" +
 			"  end\n" +
 			"  return ... -- nothing to check\n" +
 			"end";
@@ -162,13 +162,10 @@ namespace lua
 			"local assert, type = assert, type\n" +
 			"return function(s) -- as_bytes, convert string to bytes object\n" +
 			"  assert(type(s) == 'string', 'expected string, but '.. type(s) .. ' got')\n" +
-			"  local b = { s }\n" +
-			"  setmetatable(b, bytes_meta)\n" +
-			"  return b\n" +
+			"  return setmetatable({s}, bytes_meta)\n" +
 			"end,\n" +
-			"function(b) -- return bytes string if bytes object or nil" +
-			"  local m = getmetatable(b)\n" +
-			"  return m == bytes_meta and b[1] or nil\n" +
+			"function(b) -- return string if is a bytes object, or nil\n" +
+			"  return getmetatable(b) == bytes_meta and b[1] or nil\n" +
 			"end";
 		LuaFunction testBytes;
 
@@ -201,7 +198,6 @@ namespace lua
 				pushError = LuaFunction.MakeRefTo(this, -2);
 				// also set to csharp table
 				csharp["check_error"] = checkError;
-				csharp["push_error"] = pushError;
 				Api.lua_pop(L, 2); // pop
 
 				// ------ BEFORE THIS LINE, ERROR OBJECET is not prepared, so all errors pushed as string
@@ -745,8 +741,11 @@ namespace lua
 
 		static object ObjectAtInternal(IntPtr L, int idx)
 		{
-			var userdata = Api.lua_touserdata(L, idx);
-			return UdataToObject(userdata);
+			var userdata = Api.luaL_testudata(L, idx, objectMetaTable);
+			if (userdata == IntPtr.Zero) userdata = Api.luaL_testudata(L, idx, classMetaTable);
+			if (userdata != IntPtr.Zero)
+				return UdataToObject(userdata);
+			return null;
 		}
 
 		internal static object UdataToObject(IntPtr userdata)
@@ -797,8 +796,9 @@ namespace lua
 
 		byte[] TestBytes(int idx)
 		{
-			testBytes.Push(); // dont use invoke, preventing conversion from Lua -> C# before value is correct
 			Api.lua_pushvalue(L, idx);
+			testBytes.Push(); // dont use invoke, preventing conversion from Lua -> C# before value is correct
+			Api.lua_insert(L, -2);
 			Call(1, 1);
 			if (Api.lua_isnil(L, -1))
 			{
@@ -1141,9 +1141,9 @@ namespace lua
 				if (host.checkError != null) // huh, in Lua.Ctor, checkError may no be prepared
 				{
 					Api.lua_pushvalue(L, idx);
-					host.checkError.Push(); // dont use Invoke, it requires a conversion from Lua and then to C#, a waste
+					host.checkError.Push(); // dont use Invoke. host.Call inside of it results an infinite recursive call.
 					Api.lua_insert(L, -2);
-					if (Api.LUA_OK != Api.lua_pcall(L, 1, 0, 0)) // do not use host.Call, or you have infinite recursive call, .....
+					if (Api.LUA_OK != Api.lua_pcall(L, 1, 0, 0)) // do not use host.Call, or you have infinite recursive call.
 					{
 						// has error, test_error calls error() in lua script, catches here
 						errorMessage = Api.lua_tostring(L, -1);
@@ -1173,6 +1173,11 @@ namespace lua
 			try
 			{
 				return InvokeMethodInternal(L);
+			}
+			catch (System.Reflection.TargetInvocationException e)
+			{
+				PushErrorObject(L, e.InnerException.Message);
+				return 1;
 			}
 			catch (Exception e)
 			{

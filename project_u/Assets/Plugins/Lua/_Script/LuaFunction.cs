@@ -190,8 +190,7 @@ namespace lua
 
 		public static LuaFunction NewFunction(Lua L, string luaFunctionScript)
 		{
-			Api.luaL_loadstring(L, string.Format("return {0}", luaFunctionScript));
-			L.Call(0, 1);
+			L.DoString(string.Format("return {0}", luaFunctionScript), 1);
 			var func = MakeRefTo(L, -1);
 			Api.lua_pop(L, 1);
 			return func;

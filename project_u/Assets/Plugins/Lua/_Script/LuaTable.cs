@@ -156,6 +156,7 @@ namespace lua
 			Push();
 			f.Push();
 			Api.lua_setfield(L, -2, name);
+			Api.lua_pop(L, 1);
 			Cache(name, renew: true, withFunc: f);
 		}
 

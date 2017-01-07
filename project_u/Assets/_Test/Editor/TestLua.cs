@@ -400,7 +400,7 @@ namespace lua.test
 			L.PushValue(value);
 			L.Call(1, 1);
 			Assert.AreEqual(Api.LUA_TSTRING, Api.lua_type(L, -1));
-			Assert.AreEqual("10.020.030", Api.lua_tostring(L, -1));
+			Assert.AreEqual("10.02030", Api.lua_tostring(L, -1));
 			Api.lua_pop(L, 1);
 			Assert.AreEqual(stackTop, Api.lua_gettop(L));
 
@@ -936,13 +936,13 @@ namespace lua.test
 			{
 				table.SetDelegate("Test", new System.Func<int, int, int>(HaveFun));
 				var ret = table.InvokeStatic1("Test", 1, 2);
-				Assert.AreEqual(23.0, (double)ret);
+				Assert.AreEqual(23, (long)ret);
 			}
 		}
 
 		int HaveFun2(LuaTable self, int a, int b)
 		{
-			return (int)(a + b + c + (double)self["somevalue"]);
+			return (int)(a + b + c + (long)self["somevalue"]);
 		}
 
 		[Test]
@@ -953,20 +953,20 @@ namespace lua.test
 				table["somevalue"] = 20;
 				table.SetDelegate("Test", new System.Func<LuaTable, int, int, int>(HaveFun2));
 				var ret = table.Invoke1("Test", 1, 2);
-				Assert.AreEqual(43.0, (double)ret);
+				Assert.AreEqual(43, (long)ret);
 
 				Api.luaL_dostring(L, 
 					"return function(t) return t:Test(3, 4) end");
 				table.Push();
 				L.Call(1, 1);
 				var val = Api.lua_tonumber(L, -1);
-				Assert.AreEqual(47.0, val);
+				Assert.AreEqual(47, (long)val);
 			}
 		}
 
 		double HaveFun3(LuaTable self, int a, int b, LuaFunction func)
 		{
-			return (double)func.Invoke1(null, (a + b + c + (double)self["somevalue"]));
+			return (long)func.Invoke1(null, (a + b + c + (long)self["somevalue"]));
 		}
 
 		[Test]
@@ -981,7 +981,7 @@ namespace lua.test
 				table.Push();
 				L.Call(1, 1);
 				var val = Api.lua_tonumber(L, -1);
-				Assert.AreEqual(52.0, val);
+				Assert.AreEqual(52.0, (double)val);
 			}
 		}
 

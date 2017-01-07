@@ -444,8 +444,11 @@ namespace lua
 		public static extern void luaL_checkany(IntPtr L, int arg);
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern int luaL_loadstring(IntPtr state, string s);
+		public static extern int luaL_loadbufferx(IntPtr state, string s, UIntPtr size, string name, string mode);
 
+		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern int luaL_loadstring(IntPtr state, string s);
+		
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern IntPtr luaL_newstate();
 

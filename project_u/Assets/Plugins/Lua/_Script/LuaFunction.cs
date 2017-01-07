@@ -152,7 +152,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Lua.PushErrorObject(L, e.Message);
+				Lua.PushErrorObject(L, string.Format("{0}\nnative stack traceback:\n{1}", e.Message, e.StackTrace));
 				return 1;
 			}
 		}
@@ -188,9 +188,9 @@ namespace lua
 			return 1;
 		}
 
-		public static LuaFunction NewFunction(Lua L, string luaFunctionScript)
+		public static LuaFunction NewFunction(Lua L, string luaFunctionScript, string name = null)
 		{
-			L.DoString(string.Format("return {0}", luaFunctionScript), 1);
+			L.DoString(string.Format("return {0}", luaFunctionScript), 1, null);
 			var func = MakeRefTo(L, -1);
 			Api.lua_pop(L, 1);
 			return func;

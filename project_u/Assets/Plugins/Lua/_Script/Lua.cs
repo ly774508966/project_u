@@ -127,13 +127,14 @@ namespace lua
 			"  local s = { '' }\n" + 
 			"  for byte=1, #buf, 16 do\n" +
 			"    local chunk = buf:sub(byte, byte+15)\n" +
-			"    s[1] = s[1] .. string.format('%08X\t',byte-1)\n" +
+			"    s[1] = s[1] .. string.format('%08X ',byte-1)\n" +
 			"    chunk:gsub('.', function (c) s[1] = s[1] .. string.format('%02X ', string.byte(c)) end)\n" +
-			"    s[1] = s[1] .. string.rep('\t',3*(16-#chunk))\n" +
-			"    s[1] = s[1] .. chunk:gsub('[^%a%d]','.') .. '\\n'\n"+
+			"    s[1] = s[1] .. string.rep(' ',3*(16-#chunk))\n" +
+			"    s[1] = s[1] .. '\t' .. chunk:gsub('[^%a%d]','.') .. '\\n'\n"+
 			"  end\n" +
 			"  return s[1]\n" +
 			"end";
+		LuaFunction hexDump;
 
 		const string kLuaStub_ErrorObject =
 			"local error_meta = { __tostring = function(e) return e.message end }\n" +
@@ -148,7 +149,7 @@ namespace lua
 			"  if #r > 0 then\n" +
 			"    local e = r[1] \n" +
 			"    local m = getmetatable(e)\n" +
-			"    if m == error_meta then assert(false, 'invoking native function failed: ' .. e.message) end\n" +
+			"    if m == error_meta then error('\\ninvoking native function failed: ' .. e.message) end\n" +
 			"  end\n" +
 			"  return ... -- nothing to check\n" +
 			"end";
@@ -158,7 +159,7 @@ namespace lua
 
 		const string kLuaStub_Bytes =
 			"local hex_dump = csharp.hex_dump\n" +
-			"local bytes_meta = { __tostring = function(t) return hex_dump(t[1]) end}\n" +
+			"local bytes_meta = { __tostring = function(t) return 'Length: ' .. tostring(#t[1]) .. '\\n' .. hex_dump(t[1]) end}\n" +
 			"local assert, type = assert, type\n" +
 			"return function(s) -- as_bytes, convert string to bytes object\n" +
 			"  assert(type(s) == 'string', 'expected string, but '.. type(s) .. ' got')\n" +
@@ -169,7 +170,12 @@ namespace lua
 			"end";
 		LuaFunction testBytes;
 
-
+		// temp	solution for bp in lua
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		static int _Break(IntPtr L)
+		{
+			return 0;
+		}
 
 		public Lua()
 		{
@@ -192,7 +198,7 @@ namespace lua
 			try
 			{
 				// csharp.test_error && csharp.push_error
-				DoString(kLuaStub_ErrorObject, 2);
+				DoString(kLuaStub_ErrorObject, 2, "error_object");
 				// -1 check, -2 push
 				checkError = LuaFunction.MakeRefTo(this, -1);
 				pushError = LuaFunction.MakeRefTo(this, -2);
@@ -203,12 +209,12 @@ namespace lua
 				// ------ BEFORE THIS LINE, ERROR OBJECET is not prepared, so all errors pushed as string
 
 				// hex dump
-				var f = LuaFunction.NewFunction(this, kLuaStub_HexDump);
-				csharp["hex_dump"] = f;
-				f.Dispose();
+				hexDump = LuaFunction.NewFunction(this, kLuaStub_HexDump, "hex_dump");
+				csharp["hex_dump"] = hexDump;
+
 
 				// addPath (C#)
-				addPath = LuaFunction.NewFunction(this, kLuaStub_AddPath);
+				addPath = LuaFunction.NewFunction(this, kLuaStub_AddPath, "add_path");
 
 
 
@@ -280,6 +286,9 @@ namespace lua
 
 			testBytes.Dispose();
 			testBytes = null;
+
+			hexDump.Dispose();
+			hexDump = null;
 
 			csharp.Dispose();
 			csharp = null;
@@ -365,6 +374,15 @@ namespace lua
 			return ret;
 		}
 
+		public string HexDump(byte[] data)
+		{
+			if (hexDump != null)
+			{
+				return (string)hexDump.Invoke1(null, data);
+			}
+			return string.Empty;
+		}
+
 		const string kHost = "__host";
 
 		void SetHost()
@@ -423,7 +441,8 @@ namespace lua
 			var regs = new Api.luaL_Reg[]
 			{
 				new Api.luaL_Reg("import", Import),
-			};
+				new Api.luaL_Reg("_break", _Break),
+            };
 			Api.luaL_newlib(L, regs);
 			return 1;
 		}
@@ -856,24 +875,35 @@ namespace lua
 			}
 		}
 
+		static bool IsIntegerType(System.Type type)
+		{
+			return (type == typeof(System.Int32)
+					|| type == typeof(System.UInt32)
+					|| type == typeof(System.Int16)
+					|| type == typeof(System.UInt16)
+					|| type == typeof(System.Int64)
+					|| type == typeof(System.UInt64)
+					|| type == typeof(System.Byte)
+					|| type == typeof(System.SByte)
+					|| type == typeof(System.Char));
+		}
+
+
+		static bool IsNumberType(System.Type type)
+		{
+			return type == typeof(System.Single)
+				|| type == typeof(System.Double)
+				|| type == typeof(System.Decimal);
+		}
+
+
 		static bool IsNumericType(System.Type type)
 		{
-			if (type.IsPrimitive)
-			{
-				return (type == typeof(System.Byte)
-					|| type	== typeof(System.SByte)
-					|| type	== typeof(System.Char)
-					|| type == typeof(System.Int16)
-					|| type	== typeof(System.UInt16)
-					|| type	== typeof(System.Int32)
-					|| type	== typeof(System.UInt32)
-					|| type	== typeof(System.Int64)
-					|| type	== typeof(System.UInt64)
-					|| type	== typeof(System.Single)
-					|| type	== typeof(System.Double)
-					|| type	== typeof(System.Decimal));
-			}
-			return false;
+			return type.IsPrimitive
+				&& (IsIntegerType(type)
+				|| type == typeof(System.Single)
+				|| type == typeof(System.Double)
+				|| type == typeof(System.Decimal));
 		}
 
 
@@ -908,7 +938,8 @@ namespace lua
 				case Api.LUA_TFUNCTION:
 					return (type == typeof(LuaFunction));
 				case Api.LUA_TTABLE:
-					return (type == typeof(LuaTable));
+					// byte[] is passed as a { data } with metatable bytes_meta
+					return (type == typeof(LuaTable)) || (type == typeof(byte[]));
 				case Api.LUA_TNIL:
 					if (arg.IsOut) // if is out, we can pass nil in
 					{
@@ -984,9 +1015,17 @@ namespace lua
 						actualArgs[idx] = ObjectAt(i);
 						break;
 					case Api.LUA_TTABLE:
-						var t = LuaTable.MakeRefTo(this, i);
-						disposableArgs[idx] = t;
-						actualArgs[idx] = t;
+						var bytes = TestBytes(i);
+						if (bytes != null)
+						{
+							actualArgs[idx] = bytes;
+						}
+						else
+						{
+							var t = LuaTable.MakeRefTo(this, i);
+							disposableArgs[idx] = t;
+							actualArgs[idx] = t;
+						}
 						break;
 					case Api.LUA_TFUNCTION:
 						var f = LuaFunction.MakeRefTo(this, i);
@@ -1176,12 +1215,20 @@ namespace lua
 			}
 			catch (System.Reflection.TargetInvocationException e)
 			{
-				PushErrorObject(L, e.InnerException.Message);
+				PushErrorObject(L, 
+					string.Format(
+						"{0}\nnative stack traceback:\n{1}",
+						e.InnerException.Message,
+						e.InnerException.StackTrace));
 				return 1;
 			}
 			catch (Exception e)
 			{
-				PushErrorObject(L, e.Message);
+				PushErrorObject(L, 
+					string.Format(
+						"{0}\nnative stack traceback:\n{1}",
+						e.Message,
+						e.StackTrace));
 				return 1;
 			}
 		}
@@ -1450,7 +1497,12 @@ namespace lua
 
 			if (type.IsPrimitive)
 			{
-				if (IsNumericType(type))
+				if (IsIntegerType(type))
+				{
+					var number = System.Convert.ToInt64(value);
+					Api.lua_pushinteger(L, number);
+				}
+				else if (IsNumberType(type))
 				{
 					var number = System.Convert.ToDouble(value);
 					Api.lua_pushnumber(L, number);
@@ -1785,9 +1837,13 @@ namespace lua
 			return 0;
 		}
 
-		public void DoString(string luaScript, int nrets = 0)
+		public void DoString(string luaScript, int nrets = 0, string name = null)
 		{
-			var ret = Api.luaL_loadstring(L, luaScript);
+			var ret = Api.luaL_loadbufferx(L, 
+				luaScript, 
+				new	UIntPtr((uint)luaScript.Length),
+				name != null ? name : luaScript,
+				"bt");
 			if (ret != Api.LUA_OK)
 			{
 				var err = Api.lua_tostring(L, -1);

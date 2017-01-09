@@ -21,30 +21,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+
 using System;
 using System.Reflection;
 using System.Linq;
 
 namespace lua
 {
-	public class LuaScriptLoaderAttribute : Attribute
+	public class LuaTypeLoaderAttribute : Attribute
 	{
-		public delegate byte[] ScriptLoader(string scriptName, out string scriptPath);
-		static ScriptLoader cachedScriptLoader;
-		public static ScriptLoader GetLoader()
+		public delegate Type TypeLoader(string typename);
+		static TypeLoader cachedTypeLoader;
+		public static TypeLoader GetLoader()
 		{
-			if (cachedScriptLoader != null) return cachedScriptLoader;
+			if (cachedTypeLoader != null) return cachedTypeLoader;
 			var methods = Assembly.Load("Assembly-CSharp").GetTypes()
 				.Union(Assembly.Load("Assembly-CSharp-firstpass").GetTypes())
 				.SelectMany(t => t.GetMethods(BindingFlags.Static | BindingFlags.Public))
-				.Where(m => m.GetCustomAttributes(typeof(LuaScriptLoaderAttribute), false).Length > 0)
+				.Where(m => m.GetCustomAttributes(typeof(LuaTypeLoaderAttribute), false).Length > 0)
 				.ToArray();
 			if (methods.Length > 0)
 			{
 				var m = methods[0];
-				cachedScriptLoader = (ScriptLoader)Delegate.CreateDelegate(typeof(ScriptLoader), m);
+				cachedTypeLoader = (TypeLoader)Delegate.CreateDelegate(typeof(TypeLoader), m);
 			}
-			return cachedScriptLoader;
+			return cachedTypeLoader;
 		}
+
 	}
+
 }

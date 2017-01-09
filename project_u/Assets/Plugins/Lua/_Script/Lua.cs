@@ -170,7 +170,10 @@ namespace lua
 			"end";
 		LuaFunction testBytes;
 
-		// temp	solution for bp in lua
+		const string kLuaStub_CheckedImport = 
+			"function(lib) return csharp.check_error(csharp.import(lib)) end";
+
+				// temp	solution for bp in lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int _Break(IntPtr L)
 		{
@@ -208,6 +211,11 @@ namespace lua
 
 				// ------ BEFORE THIS LINE, ERROR OBJECET is not prepared, so all errors pushed as string
 
+				// checked import
+				var f = LuaFunction.NewFunction(this, kLuaStub_CheckedImport, "checked_import");
+				csharp["checked_import"] = f;
+				f.Dispose();
+
 				// hex dump
 				hexDump = LuaFunction.NewFunction(this, kLuaStub_HexDump, "hex_dump");
 				csharp["hex_dump"] = hexDump;
@@ -227,6 +235,9 @@ namespace lua
 				asBytes.Dispose();
 
 				Api.lua_pop(L, 2); // pop those
+
+
+				LuaAdditionalFunctions.Open(this);
 			}
 			catch (Exception e)
 			{
@@ -446,6 +457,34 @@ namespace lua
 			Api.luaL_newlib(L, regs);
 			return 1;
 		}
+
+		public static LuaTypeLoaderAttribute.TypeLoader typeLoader;
+		static LuaTypeLoaderAttribute.TypeLoader loadType
+		{
+			get
+			{
+				if (typeLoader == null)
+					return DefaultTypeLoader;
+				return typeLoader;
+			}
+		}
+
+		static Type DefaultTypeLoader(string typename)
+		{
+			var type = Type.GetType(typename);
+			if (type == null)
+			{
+#if UNITY_EDITOR
+				if (!Application.isPlaying)
+				{
+					var load = LuaTypeLoaderAttribute.GetLoader();
+					type = load(typename);
+				}
+#endif
+			}
+			return type;
+		}
+		
 
 		public static LuaScriptLoaderAttribute.ScriptLoader scriptLoader;
 		static LuaScriptLoaderAttribute.ScriptLoader loadScriptFromFile
@@ -918,7 +957,6 @@ namespace lua
 				|| type == typeof(System.Decimal));
 		}
 
-
 		static bool IsConvertable(int luaType, System.Reflection.ParameterInfo arg)
 		{
 			if (arg.ParameterType == typeof(System.Object))
@@ -926,13 +964,24 @@ namespace lua
 				// everything can be converted to object
 				return true;
 			}
-			if (luaType == Api.LUA_TUSERDATA)
+			if (luaType == Api.LUA_TNIL)
+			{
+				if (arg.IsOut) // if is out, we can pass nil in
+					return true;
+			}
+			return IsConvertable(luaType, arg.ParameterType);
+		}
+
+		static bool IsConvertable(int luaType, Type type)
+		{
+			if (luaType == Api.LUA_TUSERDATA
+				|| type == typeof(object))
 			{
 				// test	at convertion part
 				return true;
 			}
 
-			var type = arg.ParameterType;
+
 			if (type.IsByRef)
 			{
 				type = type.GetElementType(); // strip byref
@@ -953,11 +1002,6 @@ namespace lua
 					// byte[] is passed as a { data } with metatable bytes_meta
 					return (type == typeof(LuaTable)) || (type == typeof(byte[]));
 				case Api.LUA_TNIL:
-					if (arg.IsOut) // if is out, we can pass nil in
-					{
-						return true;
-					}
-					return (type == typeof(object));
 				case Api.LUA_TNONE:
 					return (type == typeof(object));
 			}
@@ -965,23 +1009,56 @@ namespace lua
 			return false;
 		}
 
+		static System.Reflection.ParameterInfo IsLastArgVariadic(System.Reflection.ParameterInfo[] args)
+		{
+			if (args.Length > 0)
+			{
+				// check if	last one is	variadic parameter
+				var lastArg = args[args.Length - 1];
+				if (lastArg.GetCustomAttributes(typeof(ParamArrayAttribute), false).Length > 0)
+				{
+					return lastArg;
+				}
+			}
+			return null;
+		}
+
 		internal static bool MatchArgs(System.Reflection.ParameterInfo[] args, int[] luaArgTypes)
 		{
-			if (args.Length == luaArgTypes.Length)
+			var variadicArg = IsLastArgVariadic(args);
+
+			var requiredArgCount = args.Length;
+			if (variadicArg != null)
+				requiredArgCount = requiredArgCount - 1;
+
+			if (luaArgTypes.Length < requiredArgCount)
+				return false;
+
+			// check required
+			for (int i = 0; i < requiredArgCount; ++i)
 			{
-				if (args.Length == 0) return true;
-				for (var i = 0; i < args.Length; ++i)
+				var arg = args[i];
+				var luaArgType = luaArgTypes[i];
+				if (!IsConvertable(luaArgType, arg))
 				{
-					var arg = args[i];
-					var luaArgType = luaArgTypes[i];
-					if (!IsConvertable(luaArgType, arg))
-					{
-						return false;
-					}
+					return false;
 				}
-				return true;
 			}
-			return false;
+
+			// check optional
+			if (variadicArg != null)
+			{
+				Debug.Assert(variadicArg.ParameterType.IsArray);
+				var type = variadicArg.ParameterType.GetElementType();
+				for (int i = requiredArgCount; i < luaArgTypes.Length; ++i)
+				{
+					var luaArgType = luaArgTypes[i];
+					if (!IsConvertable(luaArgType, type))
+						return false;
+				}
+			}
+
+			return true;
 		}
 
 		static readonly object[] csharpArgs_NoArgs = null;
@@ -995,6 +1072,70 @@ namespace lua
 			return null;
 		}
 
+		object SetArg(object[] actualArgs, int idx, int luaArgIdx, Type type, int luaType, out bool isDisposable)
+		{
+			isDisposable = false;
+			switch (luaType)
+			{
+				case Api.LUA_TNIL:
+					// do nothing
+					break;
+				case Api.LUA_TBOOLEAN:
+					actualArgs[idx] = Api.lua_toboolean(L, luaArgIdx);
+					break;
+				case Api.LUA_TNUMBER:
+					object nvalue;
+					if (Api.lua_isinteger(L, luaArgIdx))
+					{
+						nvalue = Api.lua_tointeger(L, luaArgIdx);
+                    }
+					else
+					{
+						nvalue = Api.lua_tonumber(L, luaArgIdx);
+					}
+
+					if (type.IsByRef)
+					{
+						type = type.GetElementType();
+					}
+					var converted = System.Convert.ChangeType(nvalue, type);
+					actualArgs[idx] = converted;
+					break;
+				case Api.LUA_TSTRING:
+					actualArgs[idx] = Api.lua_tostring(L, luaArgIdx);
+					break;
+				case Api.LUA_TTABLE:
+					var bytes = TestBytes(luaArgIdx);
+					if (bytes != null)
+					{
+						actualArgs[idx] = bytes;
+					}
+					else
+					{
+						var t = LuaTable.MakeRefTo(this, luaArgIdx);
+						isDisposable = true;
+						actualArgs[idx] = t;
+					}
+					break;
+				case Api.LUA_TFUNCTION:
+					var f = LuaFunction.MakeRefTo(this, luaArgIdx);
+					isDisposable = true;
+					actualArgs[idx] = f;
+					break;
+				case Api.LUA_TUSERDATA:
+					actualArgs[idx] = ObjectAt(luaArgIdx);
+					break;
+				default:
+					if (type != typeof(string) && type != typeof(System.Object))
+					{
+						Debug.LogWarningFormat("Convert lua type {0} to string, wanted to fit {1}", Api.ttypename(luaType), type.ToString());
+					}
+					actualArgs[idx] = Api.lua_tostring(L, luaArgIdx);
+					break;
+			}
+			return actualArgs[idx];
+		}
+
 		internal object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs, out IDisposable[] disposableArgs)
 		{
 			if (args == null || args.Length == 0)
@@ -1002,64 +1143,71 @@ namespace lua
 				disposableArgs = null;
 				return csharpArgs_NoArgs;
 			}
-			Assert(args.Length == numArgs - argStart + 1, "Different count of arguments.");
-			var actualArgs = new object[numArgs - argStart + 1];
-			disposableArgs = new IDisposable[actualArgs.Length];
-			for (int i = argStart; i <= numArgs; ++i)
+			var variadicArg = IsLastArgVariadic(args);
+
+			var luaArgCount = numArgs - argStart + 1;
+			var requiredArgCount = args.Length;
+			if (variadicArg != null)
+				requiredArgCount = requiredArgCount - 1;
+
+			if (variadicArg != null)
 			{
-				var idx = i - argStart;
+				Debug.Assert(luaArgCount >= requiredArgCount, "less arguments than required");
+			}
+			else
+			{
+				Debug.Assert(luaArgCount == requiredArgCount, "arguments count not match");
+			}
+
+			object[] actualArgs = null;
+			if (variadicArg != null)
+				actualArgs = new object[requiredArgCount + 1];
+			else
+				actualArgs = new object[luaArgCount];
+
+			disposableArgs = new IDisposable[luaArgCount];
+
+			int idx = 0;
+			for (int i = 0; i < requiredArgCount; ++i, ++idx)
+			{
+				var luaArgIdx = argStart + i;
 				var arg = args[idx];
 				var type = arg.ParameterType;
-				var luaType = Api.lua_type(L, i);
-
-				switch (luaType)
+				var luaType = Api.lua_type(L, luaArgIdx);
+				if (arg.IsOut)
 				{
-					case Api.LUA_TNUMBER:
-						var nvalue = Api.lua_tonumber(L, i);
-						if (type.IsByRef)
-						{
-							type = type.GetElementType();
-						}
-						var converted = System.Convert.ChangeType(nvalue, type);
-						actualArgs[idx] = converted;
-						break;
-					case Api.LUA_TUSERDATA:
-						actualArgs[idx] = ObjectAt(i);
-						break;
-					case Api.LUA_TTABLE:
-						var bytes = TestBytes(i);
-						if (bytes != null)
-						{
-							actualArgs[idx] = bytes;
-						}
-						else
-						{
-							var t = LuaTable.MakeRefTo(this, i);
-							disposableArgs[idx] = t;
-							actualArgs[idx] = t;
-						}
-						break;
-					case Api.LUA_TFUNCTION:
-						var f = LuaFunction.MakeRefTo(this, i);
-						disposableArgs[idx] = f;
-						actualArgs[idx] = f;
-						break;	
-					case Api.LUA_TNIL:
-						if (arg.IsOut)
-						{
-							actualArgs[idx] = GetDefaultValue(type);
-						}
-						break;
-					default:
-						if (type != typeof(string) && type != typeof(System.Object))
-						{
-							Debug.LogWarningFormat("Convert lua type {0} to string, wanted to fit {1}", Api.ttypename(luaType), type.ToString());
-						}
-						actualArgs[idx] = Api.lua_tostring(L, i);
-						break;
+					actualArgs[idx] = GetDefaultValue(type);
 				}
-
+				else
+				{
+					bool isDisposable = false;
+					var obj = SetArg(actualArgs, idx, luaArgIdx, type, luaType, out isDisposable);
+					if (isDisposable)
+						disposableArgs[idx] = (IDisposable)obj;
+				}
 			}
+
+			if (variadicArg != null)
+			{
+				var numOptionalArgCount = luaArgCount - requiredArgCount;
+				if (numOptionalArgCount > 0)
+				{
+					var optArgs = new object[numOptionalArgCount];
+					var type = variadicArg.ParameterType.GetElementType();
+					var optArgIdx = 0;
+					for (int i = requiredArgCount; i <= numOptionalArgCount; ++i, ++idx, ++optArgIdx)
+					{
+						var luaArgIdx = argStart + i;
+						var luaType = Api.lua_type(L, luaArgIdx);
+						bool isDisposable = false;
+						var obj = SetArg(optArgs, optArgIdx, luaArgIdx, type, luaType, out isDisposable);
+						if (isDisposable)
+							disposableArgs[idx] = (IDisposable)obj;
+					}
+					actualArgs[actualArgs.Length - 1] = optArgs;
+				}
+			}
+
 			return actualArgs;
 		}
 
@@ -1160,6 +1308,11 @@ namespace lua
 		{
 			try
 			{
+				Api.luaL_traceback(L, L, "===== script =====", 1);
+				var luaStack = Api.lua_tostring(L, -1);
+				Api.lua_pop(L, 1);
+				message = string.Format("Error: {0}\n{1}", message, luaStack);
+				Debug.LogErrorFormat(message);
 				var host = CheckHost(L);
 				if (host.pushError != null) // pushError may not be prepared, 
 				{
@@ -1236,7 +1389,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				PushErrorObject(L, 
+				PushErrorObject(L,
 					string.Format(
 						"{0}\nnative stack traceback:\n{1}",
 						e.Message,
@@ -1424,16 +1577,15 @@ namespace lua
 			{
 				throw new ArgumentException("expected string", "typename (arg 1)");
 			}
-			Debug.LogFormat("{0} imported.", typename);
-			var type = Type.GetType(typename);
+			var type = loadType(typename);
 			if (type == null)
 			{
-				Api.lua_pushnil(L);
-				return 1;
+				throw new Exception(string.Format("Cannot import type {0}", typename));
 			}
-			if (host.PushObject(type, classMetaTable) == 1) // TODO: opt, for type loaded, cache it
+			Debug.LogFormat("{0} imported.", typename);
+			if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
 			{
-				Api.lua_getmetatable(L, -1);
+				Api.lua_getmetatable(L, -1); // append info in metatable
 
 				Api.lua_pushboolean(L, true);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = true

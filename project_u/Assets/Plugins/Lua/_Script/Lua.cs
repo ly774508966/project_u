@@ -541,7 +541,11 @@ namespace lua
 		static int LoadScriptInternal(IntPtr L)
 		{
 			var host = CheckHost(L);
-			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptName;
+			if (!Api.luaL_teststring_strict(L, 1, out scriptName))
+			{
+				throw new ArgumentException("expected string", "scriptName (arg 1)");
+			}
 			var top = Api.lua_gettop(L);
 			try
 			{
@@ -573,7 +577,11 @@ namespace lua
 		static int LoadScript1Internal(IntPtr L)
 		{
 			var host = CheckHost(L);
-			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptName;
+			if (!Api.luaL_teststring_strict(L, 1, out scriptName))
+			{
+				throw new ArgumentException("expected string", "scriptName (arg 1)");
+			}
 			string scriptPath = string.Empty;
 			try
 			{
@@ -606,7 +614,11 @@ namespace lua
 		static int LoadScript1InEditorInternal(IntPtr L)
 		{
 			var host = CheckHost(L);
-			var scriptName = Api.luaL_checkstring(L, 1);
+			string scriptName;
+			if (!Api.luaL_teststring_strict(L, 1, out scriptName))
+			{
+				throw new ArgumentException("expected string", "scriptName (arg 1)");
+			}
 			try
 			{
 				string scriptPath;
@@ -1243,7 +1255,11 @@ namespace lua
 			var isInvokingFromClass = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
 			var obj = host.ObjectAt(Api.lua_upvalueindex(2));
 			host.Assert(obj != null, "Invoking target not found at upvalueindex(2)");
-			var methodName = Api.luaL_checkstring(L, Api.lua_upvalueindex(3));
+			string methodName;
+			if (!Api.luaL_teststring_strict(L, Api.lua_upvalueindex(3), out methodName))
+			{
+				throw new ArgumentException("expected string", "methodName (upvalueindex(3))");
+			}
 
 			int[] luaArgTypes = luaArgTypes_NoArgs;
 			var argStart = 1;
@@ -1403,7 +1419,11 @@ namespace lua
 		static int ImportInternal_(IntPtr L)
 		{
 			var host = CheckHost(L);
-			var typename = Api.luaL_checkstring(L, 1);
+			string typename;
+			if (!Api.luaL_teststring_strict(L, 1, out typename))
+			{
+				throw new ArgumentException("expected string", "typename (arg 1)");
+			}
 			Debug.LogFormat("{0} imported.", typename);
 			var type = Type.GetType(typename);
 			if (type == null)
@@ -1430,7 +1450,13 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int Import(IntPtr L)
 		{
-			var typename = Api.luaL_checkstring(L, 1);
+			string typename;
+			if (!Api.luaL_teststring_strict(L, 1, out typename))
+			{
+				var e = new ArgumentException("expected string", "typename (arg 1)");
+				PushErrorObject(L, e.Message);
+				return 1;
+			}
 			Api.luaL_requiref(L, typename, ImportInternal, 0);
 			return 1;
 		}

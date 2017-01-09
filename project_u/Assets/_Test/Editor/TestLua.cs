@@ -1049,6 +1049,24 @@ namespace lua.test
 
 		}
 
+		[Test]
+		public void Test_luaL_teststring()
+		{
+			Api.lua_pushinteger(L, 1);
+			string str;
+			bool ret = Api.luaL_teststring_strict(L, -1, out str);
+			Assert.False(ret);
+
+			Assert.True(Api.lua_isinteger(L, -1));
+
+			Api.lua_pushstring(L, "test");
+			ret = Api.luaL_teststring_strict(L, -1, out str);
+			Assert.True(ret);
+			Assert.AreEqual("test", str);
+
+			Api.lua_pop(L, 2);
+		}
+
 
 
 	}

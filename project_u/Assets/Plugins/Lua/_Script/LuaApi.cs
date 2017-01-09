@@ -418,34 +418,20 @@ namespace lua
 
 
 		// helpers
-
-		[DllImport(LIBNAME, EntryPoint = "luaL_checklstring", CallingConvention = CallingConvention.Cdecl)]
-		public static extern IntPtr luaL_checklstring(IntPtr L, int arg, out UIntPtr length);
-		public static string luaL_checkstring(IntPtr L, int arg)
-		{
-			UIntPtr len;
-			var strPtr = luaL_checklstring(L, arg, out len);
-			if (strPtr != IntPtr.Zero)
-				return Marshal.PtrToStringAnsi(strPtr, (int)len);
-			return null;
-		}
-
-		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern long luaL_checkinteger(IntPtr L, int arg);
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern long luaL_optinteger(IntPtr L, int arg, long def);
 
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern void luaL_checkstack(IntPtr L, int sz, string msg);
+
+
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern void luaL_checktype(IntPtr L, int arg, int t);
-		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern void luaL_checkany(IntPtr L, int arg);
+		public static extern int luaL_loadbufferx(IntPtr state, string s, UIntPtr size, string name, string mode);
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern int luaL_loadstring(IntPtr state, string s);
-
+		
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern IntPtr luaL_newstate();
 
@@ -544,8 +530,6 @@ namespace lua
 		public static extern int luaL_setmetatable(IntPtr L, string tname);
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern IntPtr luaL_testudata(IntPtr L, int ud, string tname);
-		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern IntPtr luaL_checkudata(IntPtr L, int ud, string tname);
 
 		public static void luaL_newlibtable(IntPtr L, luaL_Reg[] l)
 		{
@@ -566,6 +550,19 @@ namespace lua
 			if (strPtr != IntPtr.Zero)
 				return Marshal.PtrToStringAnsi(strPtr);
 			return "invalid_type_bad_ttypename";
+		}
+
+
+		// externs
+		public static bool luaL_teststring_strict(IntPtr L, int idx, out string str)
+		{
+			if (lua_type(L, idx) == Api.LUA_TSTRING)
+			{
+				str = lua_tostring(L, idx);
+				return true;
+			}
+			str = string.Empty;
+			return false;
 		}
 
 

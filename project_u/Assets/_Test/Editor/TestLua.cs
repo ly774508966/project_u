@@ -25,6 +25,7 @@ SOFTWARE.
 using System.Collections;
 using NUnit.Framework;
 using AOT;
+using System.Linq;
 
 namespace lua.test
 {
@@ -1065,6 +1066,51 @@ namespace lua.test
 			Assert.AreEqual("test", str);
 
 			Api.lua_pop(L, 2);
+		}
+
+		public int VariadicFunc(int a, params object[] args)
+		{
+			return a + (args != null ? (int)args.Sum(o => (long)o) : 0);
+		}
+
+		[Test]
+		public void TestVariadicParams()
+		{
+			using (var f = LuaFunction.NewFunction(
+				L, "function(t)	return t:VariadicFunc(10) end"))
+			{
+				var ret = (long)f.Invoke1(null, this);
+				Assert.AreEqual(10, ret);
+			}
+
+			using (var f = LuaFunction.NewFunction(
+				L, "function(t)	return t:VariadicFunc(10, 1, 2, 3, 4, 5) end"))
+			{
+				var ret = (long)f.Invoke1(null, this);
+				Assert.AreEqual(25, ret);
+			}
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestVariadicParams_IncorrectArgCount()
+		{
+			using (var f = LuaFunction.NewFunction(
+				L, "function(t)	return t:VariadicFunc() end"))
+			{
+				f.Invoke1(null, this);
+			}
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestVariadicParams_IncorrectRequiredArgType()
+		{
+			using (var f = LuaFunction.NewFunction(
+				L, "function(t)	return t:VariadicFunc('incorrect') end"))
+			{
+				f.Invoke1(null, this);
+			}
 		}
 
 

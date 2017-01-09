@@ -97,7 +97,7 @@ namespace lua
 			Api.lua_pushstring(L, lb.scriptName);
 			try 
 			{
-				L.Call(1, 2);
+				L.Call(1, Api.LUA_MULTRET);
 			}
 			catch (Exception e)
 			{

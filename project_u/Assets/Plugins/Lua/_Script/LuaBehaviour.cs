@@ -268,6 +268,39 @@ namespace lua
 			}
 		}
 
+		public object InvokeLuaMethod(string method, params object[] args)
+		{
+			if (!scriptLoaded) return null;
+
+			var top = Api.lua_gettop(L);
+			try
+			{
+
+				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+				if (Api.lua_getfield(L, -1, method) == Api.LUA_TFUNCTION)
+				{
+					L.PushRef(handleToThis);
+					Api.lua_pushvalue(L, -3);
+					int argsLength = 0;
+					if (args != null && args.Length > 0)
+					{
+						L.PushArray(args);
+						argsLength = args.Length;
+					}
+					L.Call(2 + argsLength, 1);
+					Api.lua_settop(L, top);
+					return L.ValueAt(-1);
+				}
+				Api.lua_settop(L, top);
+			}
+			catch (Exception e)
+			{
+				Api.lua_settop(L, top);
+				Debug.LogErrorFormat("Invoke {0}.{1} failed: {2}", scriptName, method, e.Message);
+			}
+			return null;
+		}
+
 		public void SendLuaMessage(string message)
 		{
 			if (!scriptLoaded) return;
@@ -283,7 +316,7 @@ namespace lua
 				}
 				catch (Exception e)
 				{
-					Debug.LogErrorFormat("Invoke {0}.{1} failed: {2}", scriptName, message, e.Message);	
+					Debug.LogErrorFormat("Invoke {0}.{1} failed: {2}", scriptName, message, e.Message);
 				}
 			}
 			Api.lua_pop(L, 1); // pop behaviour table
@@ -337,7 +370,7 @@ namespace lua
 		}
 
 		// non-throw
-		public GameObject FindGameObjectByKey(string key)
+		public GameObject FindGameObject(string key)
 		{
 			var index = System.Array.FindIndex(keys, (k) => k == key);
 			if (index != -1)

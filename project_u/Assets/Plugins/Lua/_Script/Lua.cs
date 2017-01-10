@@ -40,11 +40,59 @@ using AOT;
 
 namespace lua
 {
+	public delegate void LogDelegate(string message);
+
 	public class Config
 	{
 		// if array.Length > value, then array is passed as C# object.
 		// except byte[], bytes always copied to Lua state.
 		public static int PassAsObjectIfArrayLengthGreatThan = 30;
+
+		static LogDelegate log_;
+		public static LogDelegate Log
+		{
+			get
+			{
+				if (log_ != null)
+					return log_;
+				return (message) => Debug.Log(message);
+			}
+			set
+			{
+				log_ = value;
+			}
+		}
+
+		static LogDelegate logWarning_;
+		public static LogDelegate LogWarning
+		{
+			get
+			{
+				if (logWarning_ != null)
+					return logWarning_;
+				return (message) => Debug.LogWarning(message);
+			}
+			set
+			{
+				logWarning_ = value;
+			}
+		}
+
+		static LogDelegate logError_;
+		public static LogDelegate LogError
+		{
+			get
+			{
+				if (logError_ != null)
+					return logError_;
+				return (message) => Debug.LogError(message);
+			}
+			set
+			{
+				logError_ = value;
+			}
+		}
+
 
 	}
 
@@ -65,7 +113,7 @@ namespace lua
 		public LuaFatalException(string errorMessage)
 			: base(errorMessage)
 		{
-			Debug.LogError("LUA FATAL: " + errorMessage);
+			Config.LogError("LUA FATAL: " + errorMessage);
 		}
 	}
 
@@ -105,7 +153,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogErrorFormat("Alloc nsize = {0} failed: {1}", nsize, e.Message);
+				Config.LogError(string.Format("Alloc nsize = {0} failed: {1}", nsize, e.Message));
 				return IntPtr.Zero;
 			}
 		}
@@ -241,7 +289,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogError(e.Message);
+				Config.LogError(e.Message);
 				throw e;
 			}
 
@@ -257,7 +305,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogError("Replace searchers failed." + e.Message);
+				Config.LogError("Replace searchers failed." + e.Message);
 			}
 
 
@@ -377,7 +425,7 @@ namespace lua
 			string errorMessage;
 			if (Lua.TestError(L, -1, out errorMessage))
 			{
-				Debug.LogError(errorMessage);
+				Config.LogError(errorMessage);
 				return null;
 			}
 			var ret = ValueAt(-1);
@@ -682,7 +730,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogError(string.Format("ChunkLoader error: {0}", e.Message));
+				Config.LogError(string.Format("ChunkLoader error: {0}", e.Message));
 				size = UIntPtr.Zero;
 				return IntPtr.Zero;
 			}
@@ -740,7 +788,7 @@ namespace lua
 			}
 			catch (Exception e)
 			{
-				Debug.LogError(string.Format("ChunkWriter error: {0}", e.Message));
+				Config.LogError(string.Format("ChunkWriter error: {0}", e.Message));
 				return 0;
 			}
 		}
@@ -780,7 +828,7 @@ namespace lua
 		static int Panic(IntPtr L)
 		{
 			Api.luaL_traceback(L, L, Api.lua_tostring(L, -1), 1);
-			Debug.LogError(string.Format("LUA FATAL: {0}", Api.lua_tostring(L, -1)));
+			Config.LogError(string.Format("LUA FATAL: {0}", Api.lua_tostring(L, -1)));
 			return 0;
 		}
 
@@ -822,14 +870,14 @@ namespace lua
 		{
 			if (userdata == IntPtr.Zero)
 			{
-				Debug.LogError("userdata is null");
+				Config.LogError("userdata is null");
 				return null;
 			}
 			var ptrToObjHandle = Marshal.ReadIntPtr(userdata);
 			var handleToObj = GCHandle.FromIntPtr(ptrToObjHandle);
 			if (handleToObj.Target == null)
 			{
-				Debug.LogError("handleToObj is null");
+				Config.LogError("handleToObj is null");
 			}
 			return handleToObj.Target;
 		}
@@ -921,7 +969,7 @@ namespace lua
 				case Api.LUA_TUSERDATA:
 					return ObjectAt(idx);
 				default:
-					Debug.LogError("Not supported");
+					Config.LogError("Not supported");
 					return null;
 			}
 		}
@@ -957,58 +1005,6 @@ namespace lua
 				|| type == typeof(System.Decimal));
 		}
 
-		static bool IsConvertable(int luaType, System.Reflection.ParameterInfo arg)
-		{
-			if (arg.ParameterType == typeof(System.Object))
-			{
-				// everything can be converted to object
-				return true;
-			}
-			if (luaType == Api.LUA_TNIL)
-			{
-				if (arg.IsOut) // if is out, we can pass nil in
-					return true;
-			}
-			return IsConvertable(luaType, arg.ParameterType);
-		}
-
-		static bool IsConvertable(int luaType, Type type)
-		{
-			if (luaType == Api.LUA_TUSERDATA
-				|| type == typeof(object))
-			{
-				// test	at convertion part
-				return true;
-			}
-
-
-			if (type.IsByRef)
-			{
-				type = type.GetElementType(); // strip byref
-			}
-			switch (luaType)
-			{
-				case Api.LUA_TNUMBER:
-					return IsNumericType(type);
-				case Api.LUA_TSTRING:
-					return (type == typeof(string));
-				case Api.LUA_TBOOLEAN:
-					return (type == typeof(System.Boolean));
-				case Api.LUA_TLIGHTUSERDATA:
-					return (type == typeof(System.IntPtr) || type == typeof(System.UIntPtr));
-				case Api.LUA_TFUNCTION:
-					return (type == typeof(LuaFunction));
-				case Api.LUA_TTABLE:
-					// byte[] is passed as a { data } with metatable bytes_meta
-					return (type == typeof(LuaTable)) || (type == typeof(byte[]));
-				case Api.LUA_TNIL:
-				case Api.LUA_TNONE:
-					return (type == typeof(object));
-			}
-			Debug.LogWarningFormat("Argument type {0} is not supported", Api.ttypename(luaType));
-			return false;
-		}
-
 		static System.Reflection.ParameterInfo IsLastArgVariadic(System.Reflection.ParameterInfo[] args)
 		{
 			if (args.Length > 0)
@@ -1023,42 +1019,149 @@ namespace lua
 			return null;
 		}
 
-		internal static bool MatchArgs(System.Reflection.ParameterInfo[] args, int[] luaArgTypes)
+		static bool IsVariadic(System.Reflection.ParameterInfo arg)
 		{
-			var variadicArg = IsLastArgVariadic(args);
+			return arg.GetCustomAttributes(typeof(ParamArrayAttribute), false).Length > 0;
+		}
 
-			var requiredArgCount = args.Length;
-			if (variadicArg != null)
-				requiredArgCount = requiredArgCount - 1;
+		static int GetMatchScore(IntPtr L, int argIdx, Type type, int luaArgType)
+		{
+			if (type.IsByRef)
+				type = type.GetElementType(); // strip byref
+			if (IsNumericType(type))
+			{
+				if (luaArgType == Api.LUA_TNUMBER) return 10;
+			}
+			else if (type == typeof(string))
+			{
+				if (luaArgType == Api.LUA_TSTRING) return 10;
+				else if (luaArgType == Api.LUA_TNUMBER) return 5; // can be converted to string
+			}
+			else if (type == typeof(bool))
+			{
+				if (luaArgType == Api.LUA_TBOOLEAN) return 10;
+				return 5;
+			}
+			else if (type == typeof(LuaFunction))
+			{
+				if (luaArgType == Api.LUA_TFUNCTION) return 10;
+			}
+			else if (type == typeof(LuaTable))
+			{
+				if (luaArgType == Api.LUA_TTABLE) return 10;
+			}
+			else if (type == typeof(byte[]))
+			{
+				if (luaArgType == Api.LUA_TTABLE) return 10; // checked in conversion part
+			}
+			else if (type == typeof(object))
+			{
+				return 5; // can be converted to object
+			}
+			else if (!type.IsPrimitive) 
+			{
+				if (luaArgType == Api.LUA_TUSERDATA)
+				{
+					// check into userdata
+					var host = CheckHost(L);
+					var obj = host.ObjectAt(argIdx);
+					if (obj != null)
+					{
+						var objType = obj.GetType();
+						if (type == objType) return 10;
+						if (type.IsAssignableFrom(objType)) return 5;
+					}
+					else
+					{
+						throw new ArgumentNullException();
+					}
+				}
+			}
+			return int.MinValue;
+		}
 
-			if (luaArgTypes.Length < requiredArgCount)
-				return false;
+		static int GetMatchScore(IntPtr L, int argIdx, System.Reflection.ParameterInfo arg, int luaArgType)
+		{
+			if (arg.IsOut) return 10;
+			if (arg.ParameterType.IsValueType)
+			{
+				if (luaArgType == Api.LUA_TNIL)
+				{
+					throw new ArgumentNullException(arg.Name);
+				}
+			}
+			else
+			{
+				if (luaArgType == Api.LUA_TNIL)
+				{
+					// non-valuetype can be nil
+					return 10;
+				}
+			}
+			try
+			{
+				return GetMatchScore(L, argIdx, arg.ParameterType, luaArgType);
+			}
+			catch (ArgumentNullException)
+			{
+				throw new ArgumentNullException(arg.Name);
+			}
+		}
 
-			// check required
-			for (int i = 0; i < requiredArgCount; ++i)
+		static int GetMatchScoreOfVaridicArg(IntPtr L, int argStart, System.Reflection.ParameterInfo arg, int[] luaArgTypes, int va_start)
+		{
+			var type = arg.ParameterType.GetElementType();
+			var num_va_arg = luaArgTypes.Length - va_start;
+			if (num_va_arg == 0)
+			{
+				return 0;
+			}
+			if (type == typeof(object)) // params object[] args, common form
+			{
+				return num_va_arg * 5;
+			}
+			else
+			{
+				// all rest type should be the same if not 'params object[] args'
+				var t = luaArgTypes[va_start];
+				for (int i = va_start + 1; i < luaArgTypes.Length; ++i)
+				{
+					if (t != luaArgTypes[i]) return int.MinValue; // not match at all
+				}
+				try
+				{
+					return (GetMatchScore(L, argStart + va_start, type, t) - 1) * num_va_arg;
+				}
+				catch (ArgumentNullException)
+				{
+					throw new ArgumentNullException(arg.Name);
+				}
+			}
+		}
+
+		internal static int GetMatchScoreOfArgs(IntPtr L, int argStart, System.Reflection.ParameterInfo[] args, int[] luaArgTypes)
+		{
+			var totalScore = 0;
+			for (int i = 0; i < args.Length; ++i)
 			{
 				var arg = args[i];
-				var luaArgType = luaArgTypes[i];
-				if (!IsConvertable(luaArgType, arg))
+				var isVariadic = IsVariadic(arg);
+				if (isVariadic)
 				{
-					return false;
+					return totalScore + GetMatchScoreOfVaridicArg(L, argStart, arg, luaArgTypes, i);
+				}
+				else
+				{
+					if (i >= luaArgTypes.Length) return int.MinValue; // required more params than provided
+					var s = GetMatchScore(L, argStart + i, arg, luaArgTypes[i]);
+					if (s < 0)
+					{
+						return int.MinValue; // not match at all, no need to continue
+					}
+					totalScore += s;
 				}
 			}
-
-			// check optional
-			if (variadicArg != null)
-			{
-				Debug.Assert(variadicArg.ParameterType.IsArray);
-				var type = variadicArg.ParameterType.GetElementType();
-				for (int i = requiredArgCount; i < luaArgTypes.Length; ++i)
-				{
-					var luaArgType = luaArgTypes[i];
-					if (!IsConvertable(luaArgType, type))
-						return false;
-				}
-			}
-
-			return true;
+			return totalScore;
 		}
 
 		static readonly object[] csharpArgs_NoArgs = null;
@@ -1072,7 +1175,7 @@ namespace lua
 			return null;
 		}
 
-		object SetArg(object[] actualArgs, int idx, int luaArgIdx, Type type, int luaType, out bool isDisposable)
+		object SetArg(System.Array actualArgs, int idx, int luaArgIdx, Type type, int luaType, out bool isDisposable)
 		{
 			isDisposable = false;
 			switch (luaType)
@@ -1081,7 +1184,7 @@ namespace lua
 					// do nothing
 					break;
 				case Api.LUA_TBOOLEAN:
-					actualArgs[idx] = Api.lua_toboolean(L, luaArgIdx);
+					actualArgs.SetValue(Api.lua_toboolean(L, luaArgIdx), idx);
 					break;
 				case Api.LUA_TNUMBER:
 					object nvalue;
@@ -1099,41 +1202,41 @@ namespace lua
 						type = type.GetElementType();
 					}
 					var converted = System.Convert.ChangeType(nvalue, type);
-					actualArgs[idx] = converted;
+					actualArgs.SetValue(converted, idx);
 					break;
 				case Api.LUA_TSTRING:
-					actualArgs[idx] = Api.lua_tostring(L, luaArgIdx);
+					actualArgs.SetValue(Api.lua_tostring(L, luaArgIdx), idx);
 					break;
 				case Api.LUA_TTABLE:
 					var bytes = TestBytes(luaArgIdx);
 					if (bytes != null)
 					{
-						actualArgs[idx] = bytes;
+						actualArgs.SetValue(bytes, idx);
 					}
 					else
 					{
 						var t = LuaTable.MakeRefTo(this, luaArgIdx);
 						isDisposable = true;
-						actualArgs[idx] = t;
+						actualArgs.SetValue(t, idx);
 					}
 					break;
 				case Api.LUA_TFUNCTION:
 					var f = LuaFunction.MakeRefTo(this, luaArgIdx);
 					isDisposable = true;
-					actualArgs[idx] = f;
+					actualArgs.SetValue(f, idx);
 					break;
 				case Api.LUA_TUSERDATA:
-					actualArgs[idx] = ObjectAt(luaArgIdx);
+					actualArgs.SetValue(ObjectAt(luaArgIdx), idx);
 					break;
 				default:
 					if (type != typeof(string) && type != typeof(System.Object))
 					{
-						Debug.LogWarningFormat("Convert lua type {0} to string, wanted to fit {1}", Api.ttypename(luaType), type.ToString());
+						Config.LogWarning(string.Format("Convert lua type {0} to string, wanted to fit {1}", Api.ttypename(luaType), type.ToString()));
 					}
-					actualArgs[idx] = Api.lua_tostring(L, luaArgIdx);
+					actualArgs.SetValue(Api.lua_tostring(L, luaArgIdx), idx);
 					break;
 			}
-			return actualArgs[idx];
+			return actualArgs.GetValue(idx);
 		}
 
 		internal object[] ArgsFrom(System.Reflection.ParameterInfo[] args, int argStart, int numArgs, out IDisposable[] disposableArgs)
@@ -1145,7 +1248,7 @@ namespace lua
 			}
 			var variadicArg = IsLastArgVariadic(args);
 
-			var luaArgCount = numArgs - argStart + 1;
+			var luaArgCount = numArgs;
 			var requiredArgCount = args.Length;
 			if (variadicArg != null)
 				requiredArgCount = requiredArgCount - 1;
@@ -1192,12 +1295,13 @@ namespace lua
 				var numOptionalArgCount = luaArgCount - requiredArgCount;
 				if (numOptionalArgCount > 0)
 				{
-					var optArgs = new object[numOptionalArgCount];
+					var optArgs = System.Array.CreateInstance(variadicArg.ParameterType.GetElementType(), numOptionalArgCount);
 					var type = variadicArg.ParameterType.GetElementType();
 					var optArgIdx = 0;
-					for (int i = requiredArgCount; i <= numOptionalArgCount; ++i, ++idx, ++optArgIdx)
+					var vaArgStart = argStart + requiredArgCount;
+					for (int i = 0; i < numOptionalArgCount; ++i, ++idx, ++optArgIdx)
 					{
-						var luaArgIdx = argStart + i;
+						var luaArgIdx = vaArgStart + i;
 						var luaType = Api.lua_type(L, luaArgIdx);
 						bool isDisposable = false;
 						var obj = SetArg(optArgs, optArgIdx, luaArgIdx, type, luaType, out isDisposable);
@@ -1205,6 +1309,13 @@ namespace lua
 							disposableArgs[idx] = (IDisposable)obj;
 					}
 					actualArgs[actualArgs.Length - 1] = optArgs;
+				}
+				else
+				{
+					if (variadicArg.ParameterType == typeof(object[]))
+						actualArgs[actualArgs.Length - 1] = csharpArgs_NoArgs;
+					else
+						actualArgs[actualArgs.Length - 1] =  System.Array.CreateInstance(variadicArg.ParameterType.GetElementType(), 0);
 				}
 			}
 
@@ -1312,7 +1423,7 @@ namespace lua
 				var luaStack = Api.lua_tostring(L, -1);
 				Api.lua_pop(L, 1);
 				message = string.Format("Error: {0}\n{1}", message, luaStack);
-				Debug.LogErrorFormat(message);
+				Config.LogError(message);
 				var host = CheckHost(L);
 				if (host.pushError != null) // pushError may not be prepared, 
 				{
@@ -1398,6 +1509,28 @@ namespace lua
 			}
 		}
 
+		internal static void MatchingParameters(
+			IntPtr L,
+			int	argStart,
+			System.Reflection.MethodBase m,
+			int[] luaArgTypes,
+			ref int highScore, ref System.Reflection.MethodBase	selected,
+			ref System.Reflection.ParameterInfo[] parameters)
+		{
+			var matchingParameters = m.GetParameters();
+			var s = GetMatchScoreOfArgs(L, argStart, matchingParameters, luaArgTypes);
+			if (s > highScore)
+			{
+				highScore = s;
+				selected = m;
+				parameters = matchingParameters;
+			}
+			else if (s != int.MinValue && s == highScore)
+			{
+				throw new System.Reflection.AmbiguousMatchException(string.Format("ambiguous, two or more function matched {0}", GetLuaInvokingSigniture(m.Name, luaArgTypes)));
+			}
+		}
+
 		static int InvokeMethodInternal(IntPtr L)
 		{
 			// upvalue 1 --> isInvokingFromClass
@@ -1471,6 +1604,9 @@ namespace lua
 			if (method == null)
 			{
 				var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+				var score = Int32.MinValue;
+				System.Reflection.MethodBase selected = null;
+				List<Exception> pendingExceptions = null;
 				foreach (var member in members)
 				{
 					host.Assert(member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
@@ -1484,15 +1620,40 @@ namespace lua
 					{
 						host.Assert(!invokingStaticMethod, string.Format("Invoking non-static method {0} with incorrect syntax.", m.ToString()));
 					}
-					parameters = m.GetParameters();
-					if (MatchArgs(parameters, luaArgTypes))
+					try
 					{
-						CacheMethod(L, type, mangledName, m);
-						method = m;
-						break;  // found one, break
+						MatchingParameters(L, argStart, m, luaArgTypes, ref score, ref selected, ref parameters);
+					}
+					catch (System.Reflection.AmbiguousMatchException e)
+					{
+						throw e;
+					}
+					catch (Exception e)
+					{
+						if (pendingExceptions == null)
+							pendingExceptions = new List<Exception>();
+						pendingExceptions.Add(e);
 					}
 				}
-				host.Assert(method != null, string.Format("No corresponding csharp method for {0}", GetLuaInvokingSigniture(methodName, luaArgTypes)));
+				method = selected;
+				if (method != null)
+				{
+					CacheMethod(L, type, mangledName, method);
+				}
+				else
+				{
+					var additionalMessage = string.Empty;
+					if (pendingExceptions != null && pendingExceptions.Count > 0)
+					{
+						var sb = new System.Text.StringBuilder();
+						for (int i = 0; i < pendingExceptions.Count; ++i)
+						{
+							sb.AppendLine(pendingExceptions[i].Message);
+						}
+						additionalMessage = sb.ToString();
+					}
+					throw new Exception(string.Format("No corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
+				}
 			}
 			else
 			{
@@ -1501,7 +1662,7 @@ namespace lua
 
 			var top = Api.lua_gettop(L);
 			IDisposable[] disposableArgs;
-			var actualArgs = host.ArgsFrom(parameters, argStart, numArgs, out disposableArgs);
+			var actualArgs = host.ArgsFrom(parameters, argStart, luaArgTypes.Length, out disposableArgs);
 			host.Assert(top == Api.lua_gettop(L), "stack changed after converted args from lua.");
 
 			var retVal = method.Invoke(target, actualArgs);
@@ -1547,7 +1708,7 @@ namespace lua
 			Api.lua_pushstring(L, type.AssemblyQualifiedName);
 			if (Api.LUA_OK != Api.lua_pcall(L, 1, 1, 0))
 			{
-				Debug.LogError(Api.lua_tostring(L, -1));
+				Config.LogError(Api.lua_tostring(L, -1));
 				Api.lua_pop(L, 1);
 				Api.lua_pushnil(L);
 				return false;
@@ -1582,7 +1743,7 @@ namespace lua
 			{
 				throw new Exception(string.Format("Cannot import type {0}", typename));
 			}
-			Debug.LogFormat("{0} imported.", typename);
+			Config.Log(string.Format("{0} imported.", typename));
 			if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
 			{
 				Api.lua_getmetatable(L, -1); // append info in metatable
@@ -1980,7 +2141,7 @@ namespace lua
 		{
 			if (Api.luaL_newmetatable(L, metaTableName) == 1)
 			{
-				Debug.LogFormat("Registering object meta table {0} ... ", metaTableName);
+				Config.Log(string.Format("Registering object meta table {0} ... ", metaTableName));
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = false
 

@@ -209,12 +209,17 @@ namespace lua.test
 				"  return obj.TestMethod()\n" + 
 				"end");
 			L.PushRef(objRef);
+			string thisMessage = string.Empty;
+			Config.LogError = (message) => thisMessage = message;
 			try
 			{
 				L.Call(1, 1);
 			}
 			catch (System.Exception e)
 			{
+				Assert.True(thisMessage.IndexOf("Invoking non-static method Int32 TestMethod() with incorrect syntax") > 0);
+				Assert.Greater(thisMessage.Length, 0);
+				Config.LogError = null;
 				Api.lua_settop(L, 0);
 				throw e;
 			}
@@ -259,12 +264,17 @@ namespace lua.test
 			Api.lua_getglobal(L, "Test");
 			Assert.AreEqual(Api.LUA_TFUNCTION, Api.lua_type(L, -1));
 			L.PushRef(objRef);
+			string thisMessage = string.Empty;
+			Config.LogError = (message) => thisMessage = message;
 			try
 			{
 				L.Call(1, 1);
 			}
 			catch (System.Exception e)
 			{
+				Assert.True(thisMessage.IndexOf("Invoking static method Int32 TestStaticMethod() with incorrect syntax") > 0);
+				Assert.Greater(thisMessage.Length, 0);
+				Config.LogError = null;
 				Api.lua_settop(L, stackTop);
 				throw e;
 			}
@@ -546,6 +556,28 @@ namespace lua.test
 			Assert.AreEqual(0, Api.lua_gettop(L));
 		}
 
+		class DefaultCtor
+		{
+			public int t = 10;
+		}
+
+
+		[Test]
+		public void TestCreateCsharpObjectWithDefaultCtor()
+		{
+			L.Import(typeof(DefaultCtor), "DefaultCtor");
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function()\n" +
+				"  local c = DefaultCtor()\n" +
+				"  return c.t\n" +
+				"end"))
+			{
+				var ret = f.Invoke1();
+				Assert.AreEqual(10, ret);
+			}
+		}
+
 
 		public class MyClass
 		{
@@ -600,8 +632,8 @@ namespace lua.test
 			L.Import(typeof(UnityEngine.Debug), "UnityDebug");
 			Api.luaL_dostring(L,
 				"function Test()\n" +
-				"  UnityDebug.Log('Hello UnityDebug')\n" + 
-				"  UnityDebug.Log(42)\n" + 
+				"  csharp.check_error(UnityDebug.Log('Hello UnityDebug'))\n" + 
+				"  csharp.check_error(UnityDebug.Log(42))\n" + 
 				"end");
 			Api.lua_getglobal(L, "Test");
 			L.Call(0, 0);
@@ -996,11 +1028,27 @@ namespace lua.test
 		[ExpectedException(typeof(LuaException))]
 		public void TestCatchErrorInLua()
 		{
-			using (var f = LuaFunction.NewFunction(L,
-				"function(f) csharp.check_error(f()) end"))
+			string thisMessage = string.Empty;
+			try
 			{
-				f.Invoke(null, new System.Action(FuncThrowError));
+
+				lua.Config.LogError = (message) => thisMessage = message;
+				using (var f = LuaFunction.NewFunction(L,
+					"function(f) csharp.check_error(f()) end"))
+				{
+					f.Invoke(null, new System.Action(FuncThrowError));
+				}
+
 			}
+			catch (System.Exception e)
+			{
+				Assert.True(thisMessage.IndexOf("csharp.check_error") > 0);
+				Debug.Log("Catched Error: " + thisMessage);
+				Assert.Greater(thisMessage.Length, 0);
+				lua.Config.LogError = null;
+				throw e;
+			}
+
 		}
 
 		void FuncNoError()
@@ -1091,14 +1139,43 @@ namespace lua.test
 			}
 		}
 
+		public int VariadicFuncNoParam(params int[] args)
+		{
+			return 10;
+		}
+
+		[Test]
+		public void TestVariadicParams_NoParam()
+		{
+			using (var f = LuaFunction.NewFunction(
+				L, "function(t)	return t:VariadicFuncNoParam() end"))
+			{
+				var ret = (long)f.Invoke1(null, this);
+				Assert.AreEqual(10, ret);
+			}
+		}
+
 		[Test]
 		[ExpectedException(typeof(LuaException))]
 		public void TestVariadicParams_IncorrectArgCount()
 		{
-			using (var f = LuaFunction.NewFunction(
-				L, "function(t)	return t:VariadicFunc() end"))
+			string thisMessage = string.Empty;
+			try
 			{
-				f.Invoke1(null, this);
+				Config.LogError = (message) => thisMessage = message;
+				using (var f = LuaFunction.NewFunction(
+					L, "function(t)	return t:VariadicFunc() end"))
+				{
+					f.Invoke1(null, this);
+				}
+			}
+			catch (System.Exception e)
+			{
+				Assert.True(thisMessage.IndexOf("No corresponding csharp method") > 0);
+				Debug.Log("Catched Error: " + thisMessage);
+				Assert.Greater(thisMessage.Length, 0);
+				Config.LogError = null;
+				throw e;
 			}
 		}
 
@@ -1106,11 +1183,364 @@ namespace lua.test
 		[ExpectedException(typeof(LuaException))]
 		public void TestVariadicParams_IncorrectRequiredArgType()
 		{
-			using (var f = LuaFunction.NewFunction(
-				L, "function(t)	return t:VariadicFunc('incorrect') end"))
+			string thisMessage = string.Empty;
+			try
 			{
-				f.Invoke1(null, this);
+				Config.LogError = (message) => thisMessage = message;
+				using (var f = LuaFunction.NewFunction(
+					L, "function(t)	return t:VariadicFunc('incorrect') end"))
+				{
+					f.Invoke1(null, this);
+				}
 			}
+			catch (System.Exception e)
+			{
+				Assert.True(thisMessage.IndexOf("No corresponding csharp method") > 0);
+				Debug.Log("Catched Error: " + thisMessage);
+				Assert.Greater(thisMessage.Length, 0);
+				Config.LogError = null;
+				throw e;
+			}
+		}
+
+		class TestOverloading
+		{
+			public string Func(string a, params object[] args)
+			{
+				throw new System.Exception("Should not match this");
+			}
+
+			public string Func(string a, string b, params object[] args)
+			{
+				var sb = new System.Text.StringBuilder();
+				sb.Append(a);
+				sb.Append(b);
+				if (args != null)
+				{
+					foreach (var arg in args)
+					{
+						sb.Append((string)arg);
+					}
+				}
+				return sb.ToString();
+			}
+
+			public string Func(string a, string b, int c)
+			{
+				return "Func3";
+			}
+		}
+
+		[Test]
+		public void TestFuncOverloading()
+		{
+			var t = new TestOverloading();
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func('a', 'b')) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		[Test]
+		public void TestFuncOverloading1()
+		{
+			var t = new TestOverloading();
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func('a', 'b', 10)) end"))
+			{
+				var k = (string)f.Invoke1(null, t);
+				Assert.AreEqual("Func3", k);
+			}
+		}
+
+		class TestOverloading2
+		{
+			public int Func(object a, object b, object c)
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(string a, object b, object c)
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(string a, string b, int c)
+			{
+				return 10;
+			}
+		}
+
+		[Test]
+		public void TestFuncOverloading_ExactlyMatchIsBetterThanConvert()
+		{
+			var t = new TestOverloading2();
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func('a', 'b', 10)) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		class TestOverloading3
+		{
+			public int Func(string a, object b, object c)
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(string a, object b, int c)
+			{
+				return 10;
+			}
+		}
+
+		[Test]
+		public void TestFuncOverloading_ExactlyMatchIsBetterThanConvert2()
+		{
+			var t = new TestOverloading3();
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func('a', 'b', 10)) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		class TestOverloading4
+		{
+			public int Func(string a, string b, object c)
+			{
+				return 10;
+			}
+			public int Func(string a, object b, int c)
+			{
+				throw new System.Exception("not this");
+			}
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestFuncOverloading_Ambiguous()
+		{
+			string thisMessage = string.Empty;
+			try
+			{
+				Config.LogError = (message) => thisMessage = message;
+				var t = new TestOverloading4();
+				//t.Func("a", "b", 10); 
+				// C# cannot decide which one is it. 
+				// In Lua.cs, these two func has same score on parameters passed below
+				// throw exception about this
+				using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func('a', 'b', 10)) end"))
+				{
+					f.Invoke(null, t);
+				}
+			}
+			catch (System.Exception e)
+			{
+				Assert.True(thisMessage.IndexOf("ambiguous") > 0);
+				throw e;
+			}
+		}
+
+		class TestOverloading5
+		{
+			public int Func(int a, int b , int c)  // 30
+			{
+				return 10;
+			}
+			public int Func(params int[] args) // 27
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(params object[] args) // 15
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(int a, params object[] args) // 20
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(int a, int b, params object[] args) // 25
+			{
+				throw new System.Exception("not this");
+			}
+		}
+
+		[Test]
+		public void TestFuncOverloading_NoAmbiguous()
+		{
+			var t = new TestOverloading5();
+			t.Func(10, 10, 10);
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func(10, 10, 10)) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		class TestOverloading6
+		{
+			public int Func(int a, int b , int c)  // scores 30
+			{
+				return 10;
+			}
+			public int Func(int a, int b, params int[] args) // scores 29
+			{
+				throw new System.Exception("not this");
+			}
+		}
+		[Test]
+		public void TestFuncOverloading_NoAmbiguous2()
+		{
+			var t = new TestOverloading5();
+			t.Func(10, 10, 10);
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func(10, 10, 10)) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+
+		class TestOverloading7
+		{
+			public int Func(int a, int b , object c)  // scores 25
+			{
+				throw new System.Exception("not this");
+			}
+			public int Func(int a, int b, params int[] args) // scores 29
+			{
+				return 20;
+			}
+		}
+		[Test]
+		public void TestFuncOverloading_NoAmbiguous3()
+		{
+			var t = new TestOverloading7();
+			t.Func(10, 10, 10);
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func(10, 10, 10)) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		class A { }
+		class B { }
+		class TestOverloading8
+		{
+			public void Func(A _1, A _2)
+			{
+			}
+			public void Func(B _1, B _2)
+			{
+			}
+		}
+		[Test]
+		public void TestFuncOverloading_NoAmbiguous4()
+		{
+			var t = new TestOverloading8();
+			L.Import(typeof(A), "A");
+			L.Import(typeof(B), "B");
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func(A(), A())) end"))
+			{
+				f.Invoke(null, t);
+			}
+		}
+
+		struct C { }
+
+		class TestNilParam
+		{
+			public void Func(A a)
+			{
+				Assert.AreEqual(null, a);
+			}
+			public void Func(C a)
+			{
+				throw new System.Exception("not this");
+			}
+			public void FuncNonValueType(C a)
+			{
+			}
+		}
+
+		[Test]
+		public void TestNilParam_ValueType()
+		{
+			var t = new TestNilParam();
+			using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:Func(nil)) end"))
+			{
+				f.Invoke(null, t);
+			}			
+		}
+
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestNilParam_NonValueType()
+		{
+			string thisMessage = string.Empty;
+			try
+			{
+				Config.LogError = (message) => thisMessage = message;
+				var t = new TestNilParam();
+				using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:FuncNonValueType(nil)) end"))
+				{
+					f.Invoke(null, t);
+				}
+			}
+			catch (System.Exception e)
+			{
+				Config.LogError = null;
+				Assert.True(thisMessage.IndexOf("Argument cannot be null") > 0);
+				throw e;
+			}
+		}
+
+		class Issue33
+		{
+			public int Func(A _1, A _2)
+			{
+				return 10;
+			}
+
+			public int Func(B _1, B _2)
+			{
+				return 20;
+			}
+		}
+
+
+		[Test]
+		public void Test_Issue33_SameSignatureForNonPrimitiveParameter()
+		{
+			var t = new Issue33();
+			L.Import(typeof(A), "A");
+			L.Import(typeof(B), "B");
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(A(), A()) end"))
+			{
+				var ret = f.Invoke1(null, t);
+				Assert.AreEqual(10, ret);
+			}
+
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(B(), B()) end"))
+			{
+				var ret = f.Invoke1(null, t);
+				Assert.AreEqual(20, ret);
+			}
+		}
+
+		class IssueTypeAsParameter
+		{
+			public object Func(System.Type t)
+			{
+				return System.Activator.CreateInstance(t);
+			}
+		}
+
+		[Test]
+		public void Test_Issue_TypeShouldBeAbleToBePassedAsParameter()
+		{
+			var top = Api.lua_gettop(L);
+			L.Import(typeof(A), "A");
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(A) end"))
+			{
+				var r = f.Invoke1(null, new IssueTypeAsParameter());
+				Assert.AreEqual(typeof(A), r.GetType());
+			}
+			Api.lua_settop(L, top);
 		}
 
 

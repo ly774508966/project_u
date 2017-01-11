@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using AOT;
 
@@ -70,7 +71,7 @@ namespace lua
 			int[] luaArgTypes = Lua.luaArgTypes_NoArgs;
 			if (numArgs > 1) // the first arg is class itself
 			{
-				luaArgTypes = new int[numArgs - 1];
+				luaArgTypes = new int[numArgs-1];
 				for (var i = 2; i <= numArgs; ++i)
 				{
 					luaArgTypes[i-2] = Api.lua_type(L, i);
@@ -78,21 +79,48 @@ namespace lua
 			}
 
 			var type = (System.Type)typeObj;
-			var mangledName = Lua.Mangle("__ctor", luaArgTypes, invokingStaticMethod: true);
+			var mangledName = host.Mangle("__ctor", luaArgTypes, invokingStaticMethod: true, argStart: 2);
 			var method = Lua.GetMethodFromCache(type, mangledName);
 			System.Reflection.ParameterInfo[] parameters = null;
 			if (method == null)
 			{
 				var constructors = type.GetConstructors();
+				System.Reflection.MethodBase selected = null;
+				int highScore = int.MinValue;
+				List<Exception> pendingExceptions = null;
 				for (var i = 0; i < constructors.Length; ++i)
 				{
 					method = constructors[i];
-					parameters = method.GetParameters();
-					if (Lua.MatchArgs(parameters, luaArgTypes))
+					try
 					{
-						Lua.CacheMethod(L, type, mangledName, method);
-						break;
+						Lua.MatchingParameters(L, 2, method, luaArgTypes, ref highScore, ref selected, ref parameters);
 					}
+					catch (System.Reflection.AmbiguousMatchException e)
+					{
+						throw e;
+					}
+					catch (Exception e)
+					{
+						if (pendingExceptions == null)
+							pendingExceptions = new List<Exception>();
+						pendingExceptions.Add(e);
+					}
+
+				}
+				method = selected;
+				if (method == null)
+				{
+					var additionalMessage = string.Empty;
+					if (pendingExceptions != null && pendingExceptions.Count > 0)
+					{
+						var sb = new System.Text.StringBuilder();
+						for (int i = 0; i < pendingExceptions.Count; ++i)
+						{
+							sb.AppendLine(pendingExceptions[i].Message);
+						}
+						additionalMessage = sb.ToString();
+					}
+					throw new Exception(string.Format("No proper constructor available, calling {0}\n{1}", Lua.GetLuaInvokingSigniture("ctor", luaArgTypes), additionalMessage));
 				}
 			}
 			else
@@ -100,24 +128,19 @@ namespace lua
 				parameters = method.GetParameters();
 			}
 
-			if (method != null)
-			{
-				var ctor = (System.Reflection.ConstructorInfo)method;
+			var ctor = (System.Reflection.ConstructorInfo)method;
 
-				IDisposable[] disposableArgs;
-				var args = host.ArgsFrom(parameters, 2, numArgs, out disposableArgs);
-				host.PushObject(ctor.Invoke(args));
-				if (disposableArgs != null)
+			IDisposable[] disposableArgs;
+			var args = host.ArgsFrom(parameters, 2, luaArgTypes.Length, out disposableArgs);
+			host.PushObject(ctor.Invoke(args));
+			if (disposableArgs != null)
+			{
+				foreach (var d in disposableArgs)
 				{
-					foreach (var d in disposableArgs)
-					{
-						if (d != null) d.Dispose();
-					}
+					if (d != null) d.Dispose();
 				}
-				return 1;
 			}
-			host.Assert(false, string.Format("No proper constructor available, calling {0}", Lua.GetLuaInvokingSigniture("ctor", luaArgTypes)));
-			return 1; // never get here , avoiding compile error
+			return 1;
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]

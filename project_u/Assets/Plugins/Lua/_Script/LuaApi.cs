@@ -79,6 +79,8 @@ namespace lua
 		public const int LUA_TTHREAD = 8;
 		public const int LUA_NUMTAGS = 9;
 
+
+
 		[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 		public delegate int lua_CFunction(IntPtr L);
 		[UnmanagedFunctionPointer(CallingConvention.Cdecl)]

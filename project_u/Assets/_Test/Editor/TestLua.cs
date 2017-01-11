@@ -1522,5 +1522,28 @@ namespace lua.test
 			}
 		}
 
+		class IssueTypeAsParameter
+		{
+			public object Func(System.Type t)
+			{
+				return System.Activator.CreateInstance(t);
+			}
+		}
+
+		[Test]
+		public void Test_Issue_TypeShouldBeAbleToBePassedAsParameter()
+		{
+			var top = Api.lua_gettop(L);
+			L.Import(typeof(A), "A");
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(A) end"))
+			{
+				var r = f.Invoke1(null, new IssueTypeAsParameter());
+				Assert.AreEqual(typeof(A), r.GetType());
+			}
+			Api.lua_settop(L, top);
+		}
+
+
+
 	}
 }

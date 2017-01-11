@@ -1400,7 +1400,15 @@ namespace lua
 					var obj = ObjectAt(argStart + i);
 					if (obj != null)
 					{
-						var refToType = GetCachedTypeRef(obj.GetType());
+						var refToType = Api.LUA_NOREF;
+						if (obj is Type)
+						{
+							refToType = GetCachedTypeRef(((Type)obj).AssemblyQualifiedName);
+						}
+						else
+						{
+							refToType = GetCachedTypeRef(obj.GetType().AssemblyQualifiedName);
+						}
 						sb.Append(refToType);
 					}
 					sb.Append('.');
@@ -1748,9 +1756,9 @@ namespace lua
 
 		Dictionary<string, int> typeCache = new Dictionary<string, int>();
 
-		int GetCachedTypeRef(Type type)
+		int GetCachedTypeRef(string assemblyQualifiedName)
 		{
-			return typeCache[type.AssemblyQualifiedName];
+			return typeCache[assemblyQualifiedName];
 		}
 
 		static int ImportInternal_(IntPtr L) // called only if the type not imported

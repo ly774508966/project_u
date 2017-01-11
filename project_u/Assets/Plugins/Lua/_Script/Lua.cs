@@ -1377,7 +1377,7 @@ namespace lua
 			return method;
 		}
 
-		internal static string Mangle(string methodName, int[] luaArgTypes, bool invokingStaticMethod)
+		internal string Mangle(string methodName, int[] luaArgTypes, bool invokingStaticMethod, int argStart)
 		{
 			var sb = new System.Text.StringBuilder();
 			if (invokingStaticMethod)
@@ -1390,9 +1390,25 @@ namespace lua
 			}
 			sb.Append(methodName);
 			sb.Append(luaArgTypes.Length);
+
 			for (int i = 0; i < luaArgTypes.Length; ++i)
 			{
-				sb.Append(luaArgTypes[i]);
+
+				if (luaArgTypes[i] == Api.LUA_TUSERDATA)
+				{
+					sb.Append('c');
+					var obj = ObjectAt(argStart + i);
+					if (obj != null)
+					{
+						var refToType = GetCachedTypeRef(obj.GetType());
+						sb.Append(refToType);
+					}
+					sb.Append('.');
+				}
+				else
+				{
+					sb.Append(luaArgTypes[i]);
+				}
 			}
 			return sb.ToString();
 		}
@@ -1597,7 +1613,7 @@ namespace lua
 				type = obj.GetType();
 			}
 
-			var mangledName = Mangle(methodName, luaArgTypes, invokingStaticMethod);
+			var mangledName = host.Mangle(methodName, luaArgTypes, invokingStaticMethod, argStart);
 			var method = GetMethodFromCache(type, mangledName);
 			System.Reflection.ParameterInfo[] parameters = null;
 
@@ -1730,7 +1746,14 @@ namespace lua
 			}
 		}
 
-		static int ImportInternal_(IntPtr L)
+		Dictionary<string, int> typeCache = new Dictionary<string, int>();
+
+		int GetCachedTypeRef(Type type)
+		{
+			return typeCache[type.AssemblyQualifiedName];
+		}
+
+		static int ImportInternal_(IntPtr L) // called only if the type not imported
 		{
 			var host = CheckHost(L);
 			string typename;
@@ -1743,19 +1766,35 @@ namespace lua
 			{
 				throw new Exception(string.Format("Cannot import type {0}", typename));
 			}
-			Config.Log(string.Format("{0} imported.", typename));
-			if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
+			int refToType;
+			if (!host.typeCache.TryGetValue(type.AssemblyQualifiedName, out refToType))
 			{
-				Api.lua_getmetatable(L, -1); // append info in metatable
-
-				Api.lua_pushboolean(L, true);
-				Api.lua_rawseti(L, -2, 1); // isClassObject = true
-
-				Api.lua_pushcclosure(L, MetaMethod.MetaConstructFunction, 0);
-				Api.lua_setfield(L, -2, "__call");
-
-				Api.lua_pop(L, 1);
+				refToType = Api.LUA_NOREF;
 			}
+
+			if (refToType != Api.LUA_NOREF)
+			{
+				host.PushRef(refToType);
+			}
+			else
+			{
+				Config.Log(string.Format("{0} imported.", typename));
+				if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
+				{
+					Api.lua_getmetatable(L, -1); // append info in metatable
+
+					Api.lua_pushboolean(L, true);
+					Api.lua_rawseti(L, -2, 1); // isClassObject = true
+
+					Api.lua_pushcclosure(L, MetaMethod.MetaConstructFunction, 0);
+					Api.lua_setfield(L, -2, "__call");
+
+					Api.lua_pop(L, 1);
+				}
+				refToType = host.MakeRefAt(-1);
+				host.typeCache[type.AssemblyQualifiedName] = refToType;
+			}
+
 			return 1;
 		}
 

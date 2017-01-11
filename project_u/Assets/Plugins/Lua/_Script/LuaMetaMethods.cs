@@ -79,7 +79,7 @@ namespace lua
 			}
 
 			var type = (System.Type)typeObj;
-			var mangledName = Lua.Mangle("__ctor", luaArgTypes, invokingStaticMethod: true);
+			var mangledName = host.Mangle("__ctor", luaArgTypes, invokingStaticMethod: true, argStart: 2);
 			var method = Lua.GetMethodFromCache(type, mangledName);
 			System.Reflection.ParameterInfo[] parameters = null;
 			if (method == null)

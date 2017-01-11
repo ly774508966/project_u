@@ -1489,5 +1489,38 @@ namespace lua.test
 			}
 		}
 
+		class Issue33
+		{
+			public int Func(A _1, A _2)
+			{
+				return 10;
+			}
+
+			public int Func(B _1, B _2)
+			{
+				return 20;
+			}
+		}
+
+
+		[Test]
+		public void Test_Issue33_SameSignatureForNonPrimitiveParameter()
+		{
+			var t = new Issue33();
+			L.Import(typeof(A), "A");
+			L.Import(typeof(B), "B");
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(A(), A()) end"))
+			{
+				var ret = f.Invoke1(null, t);
+				Assert.AreEqual(10, ret);
+			}
+
+			using (var f = LuaFunction.NewFunction(L, "function(t) return t:Func(B(), B()) end"))
+			{
+				var ret = f.Invoke1(null, t);
+				Assert.AreEqual(20, ret);
+			}
+		}
+
 	}
 }

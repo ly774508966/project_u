@@ -46,7 +46,22 @@ namespace lua.test
 		[Test]
 		public void TestPatchStaticMethodWithLuaFunction()
 		{
-			ToBePatched.PathMe();
+			ToBePatched.PatchMe();
+		}
+
+		[Test]
+		public void TestPatchThisOneWithParamAndReturnPrimitive()
+		{
+			var t = new ToBePatched();
+			t.PatchThisOneWithParamAndReturnPrimitive(new ToBePatched.A(), 10);
+		}
+
+
+		[Test]
+		public void TestSimple()
+		{
+			var t = new ToBePatched();
+			t.CallTest2(new ToBePatched.A(), 10);
         }
 
 	}

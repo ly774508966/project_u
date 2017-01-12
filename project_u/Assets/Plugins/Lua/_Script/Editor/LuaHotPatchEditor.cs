@@ -7,13 +7,13 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq.Expressions;
+using System.IO;
 
 namespace lua.hotpatch
 {
 	public class LuaHotPatchEditor
 	{
-
-
+		// http://stackoverflow.com/a/9469697/84998
 		static MemberInfo MemberInfoCore(Expression body, ParameterExpression param)
 		{
 			if (body.NodeType == ExpressionType.MemberAccess)
@@ -35,11 +35,16 @@ namespace lua.hotpatch
 			return MemberInfoCore(memberSelectionExpression.Body, null/*param*/);
 		}
 
-		[MenuItem("Lua/Active Hot Patch")]
+		[MenuItem("Lua/Active Hot Patch", priority = 100)]
 		static void ActiveHotPatch()
 		{
 			var hubMethod = LuaHotPatchHubAttribute.GetMethod();
-			if (hubMethod == null) return;
+			if (hubMethod == null)
+			{
+				Config.Log("LuaHotPatchHub not found. It should be a public static method.");
+				return;
+			}
+
 
 			var injectingMethods = LuaHotPatchAttribute.GetMethods();
 
@@ -53,13 +58,11 @@ namespace lua.hotpatch
 				.Where(m =>	m.HasCustomAttributes)
 				.ToArray();
 
-
 			var injectingTargets = allMethods
 				.Where(m => m.CustomAttributes.FirstOrDefault(a => a.AttributeType.ToString() == typeof(LuaHotPatchAttribute).ToString()) != null)
 				.ToArray();
 
-			var getTypeFromHandleMethodInfo = (MethodInfo)MemberInfo(() => Type.GetTypeFromHandle(new RuntimeTypeHandle()));
-			var createInstanceMethodInfo = (MethodInfo)MemberInfo(() => Activator.CreateInstance(typeof(int)));
+			var getMethodFromHandleMethod = (MethodInfo)MemberInfo(() => MethodBase.GetMethodFromHandle(new RuntimeMethodHandle()));
 
 
 			var pendingAssembly = new HashSet<AssemblyDefinition>();
@@ -75,48 +78,97 @@ namespace lua.hotpatch
 				}
 				if (methodRef == null) continue;
 
-				var getTypeFromHandleMethodRef = m.Module.ImportReference(getTypeFromHandleMethodInfo);
-//				var createInstanceMethodRef = m.Module.ImportReference(createInstanceMethodInfo);
+				var getMethodFromHandleMethodRef = m.Module.ImportReference(getMethodFromHandleMethod);
+				var objectTypeRef = m.Module.ImportReference(typeof(object));
+				var voidTypeRef = m.Module.ImportReference(typeof(void));
+
 
 				var ilProcessor = m.Body.GetILProcessor();
 				// https://msdn.microsoft.com/en-us/library/system.reflection.emit.opcodes(v=vs.110).aspx
-				// https://stackoverflow.com/questions/9623797/c-sharp-call-and-return-an-object-from-a-static-method-in-il
 				var hubMethodRef = m.Module.ImportReference(hubMethod);
+				var isStatic = m.IsStatic;
 
-				var instructions = new List<Instruction>
+				var continueCurrentMethod = ilProcessor.Create(OpCodes.Nop);
+				var anchorToArguments = ilProcessor.Create(OpCodes.Ldnull);
+				var anchorToReturn = ilProcessor.Create(OpCodes.Ret);
+
+				// local val for ret val (last one)
+				m.Body.Variables.Add(new VariableDefinition(objectTypeRef));
+
+				var firstInstruction = ilProcessor.Create(OpCodes.Nop);
+				ilProcessor.InsertBefore(m.Body.Instructions.First(), firstInstruction); // place holder
+
+				var instructions = new[]
 				{
-//					ilProcessor.Create(OpCodes.Nop),
-//					ilProcessor.Create(OpCodes.Ldtoken, methodRef),
-//					ilProcessor.Create(OpCodes.Pop),
-					ilProcessor.Create(OpCodes.Ldc_I4_0),
-//					ilProcessor.Create(OpCodes.Box, Type),
-//					ilProcessor.Create(OpCodes.Call, getTypeFromHandleMethodRef),
-//					ilProcessor.Create(OpCodes.Call, createInstanceMethodRef),
-                    ilProcessor.Create(OpCodes.Call, hubMethodRef)
+					// http://evain.net/blog/articles/2010/05/05/parameterof-propertyof-methodof/
+					ilProcessor.Create(OpCodes.Ldtoken, methodRef),
+					ilProcessor.Create(OpCodes.Call, getMethodFromHandleMethodRef),
+					// push	null or this
+					isStatic ? ilProcessor.Create(OpCodes.Ldnull) : ilProcessor.Create(OpCodes.Ldarg_0),
+					// ret value
+					ilProcessor.Create(OpCodes.Ldloca_S, (byte)(m.Body.Variables.Count - 1)),
+					// copy arguments to params object[]
+					anchorToArguments,
+					// call
+					ilProcessor.Create(OpCodes.Call, hubMethodRef),
+					ilProcessor.Create(OpCodes.Brfalse, continueCurrentMethod),
+					// return part
+					anchorToReturn,
+					continueCurrentMethod
 				};
-				for (int i = instructions.Count - 1; i >= 0; --i)
-				{
-					ilProcessor.InsertBefore(m.Body.Instructions.First(), instructions[i]);
-				}
 
-/*
+				ReplaceInstruction(ilProcessor, firstInstruction, instructions);
 
+				// process arguments
 				if (m.HasParameters)
 				{
-					// loads all parameters	onto stack
+					var paramsInstructions = new List<Instruction>()
+					{
+						ilProcessor.Create(OpCodes.Ldc_I4, m.Parameters.Count),
+						ilProcessor.Create(OpCodes.Newarr, objectTypeRef)
+					};
+
 					for (int i = 0; i < m.Parameters.Count; ++i)
 					{
-						ilProcessor.InsertBefore(m.Body.Instructions[0], ilProcessor.Create(OpCodes.Call, hubMethod));
+						paramsInstructions.Add(ilProcessor.Create(OpCodes.Dup));
+						paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldc_I4, i));
+						paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldarg, i + 1));
+						if (m.Parameters[i].ParameterType.IsPrimitive)
+						{
+							paramsInstructions.Add(ilProcessor.Create(OpCodes.Box, m.Parameters[i].ParameterType));
+						}
+						else
+						{
+							paramsInstructions.Add(ilProcessor.Create(OpCodes.Castclass, objectTypeRef));
+						}
+						paramsInstructions.Add(ilProcessor.Create(OpCodes.Stelem_Ref));
 					}
+					ReplaceInstruction(ilProcessor, anchorToArguments, paramsInstructions);
 				}
-*/
+
+				// process return
+				if (m.ReturnType.FullName != voidTypeRef.FullName)
+				{
+					var retInstructions = new List<Instruction>();
+					retInstructions.Add(ilProcessor.Create(OpCodes.Ldloc, m.Body.Variables.Count - 1));
+					if (m.ReturnType.IsPrimitive)
+					{
+						retInstructions.Add(ilProcessor.Create(OpCodes.Unbox_Any, m.ReturnType));
+					}
+					else
+					{
+						retInstructions.Add(ilProcessor.Create(OpCodes.Castclass, m.ReturnType));
+					}
+					retInstructions.Add(ilProcessor.Create(OpCodes.Ret));
+					ReplaceInstruction(ilProcessor, anchorToReturn, retInstructions);
+				}
 
 				pendingAssembly.Add(m.Module.Assembly);
 			}
 
 			foreach (var a in pendingAssembly)
 			{
-				a.Write(Application.dataPath + "/../Library/ScriptAssemblies/" + a.MainModule.Name + ".mod.dll");
+				a.Write(Application.dataPath + "/../Library/ScriptAssemblies/" + a.MainModule.Name);// + ".mod.dll");
 			}
 
 			if (pendingAssembly.Count > 0)
@@ -126,11 +178,47 @@ namespace lua.hotpatch
 
 
 
-
-
-
-
-
 		}
-	}
+
+		static void ReplaceInstruction(ILProcessor ilProcessor, Instruction anchorInstruction, IEnumerable<Instruction> instructions)
+		{
+			bool firstOne = true;
+			foreach (var ins in instructions)
+			{
+				if (firstOne)
+				{
+					ilProcessor.Replace(anchorInstruction, ins);
+					firstOne = false;
+				}
+				else
+				{
+					ilProcessor.InsertAfter(anchorInstruction, ins);
+				}
+				anchorInstruction = ins;
+			}
+		}
+
+		[MenuItem("Lua/Deactive Hot Patch", priority = 101)]
+		static void DeactiveHotPatch()
+		{
+            File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll");
+            File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll.mdb");
+			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll");
+			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll.mdb");
+
+			File.WriteAllText(
+				Application.dataPath + "/_Dev_EmptyForRefresh.cs",
+				"//	generated for recompiling "	+ DateTime.Now.ToString() +	"\n");
+			File.WriteAllText(
+				Application.dataPath + "/Plugins/_Dev_EmptyForRefresh-firstpass.cs",
+				"//	generated for recompiling "	+ DateTime.Now.ToString() +	"\n");
+			AssetDatabase.Refresh();
+			Debug.LogWarning("restart to make it take effect.");
+		}
+		[MenuItem("Lua/Reload C# Scripts", priority = 102)]
+		static void Reload()
+		{
+			UnityEditorInternal.InternalEditorUtility.RequestScriptReload();
+		}
+    }
 }

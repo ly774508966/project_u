@@ -56,13 +56,24 @@ namespace lua.test
 			t.PatchThisOneWithParamAndReturnPrimitive(new ToBePatched.A(), 10);
 		}
 
+		[Test]
+		public void TestPatchOutParams()
+		{
+			var t = new ToBePatched();
+			ToBePatched.A a;
+			int b;
+			t.PatchOutParams(out a, out b);
+		}
+
 
 		[Test]
 		public void TestSimple()
 		{
 			var t = new ToBePatched();
-			t.CallTest2(new ToBePatched.A(), 10);
-        }
+			ToBePatched.A a;
+			int b;
+			t.CallTest1(out a, out b);
+		}
 
 	}
 

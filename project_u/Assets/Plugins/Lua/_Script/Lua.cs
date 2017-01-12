@@ -1166,7 +1166,7 @@ namespace lua
 
 		static readonly object[] csharpArgs_NoArgs = null;
 
-		static object GetDefaultValue(Type type)
+		internal static object GetDefaultValue(Type type)
 		{
 			if (type.IsValueType)
 			{

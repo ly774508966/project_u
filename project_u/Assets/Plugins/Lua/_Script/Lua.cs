@@ -1168,7 +1168,7 @@ namespace lua
 
 		internal static object GetDefaultValue(Type type)
 		{
-			if (type.IsValueType)
+			if (type.IsValueType  && type != typeof(void))
 			{
 				return Activator.CreateInstance(type);
 			}

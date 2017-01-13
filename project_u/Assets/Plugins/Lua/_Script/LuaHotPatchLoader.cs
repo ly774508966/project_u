@@ -28,7 +28,7 @@ namespace lua.hotpatch
 {
 	public class LuaHotPatchLoader
 	{
-
+		// https://www.codeproject.com/articles/438868/inline-msil-in-csharp-vb-net-and-generic-pointers
 
 		[LuaHotPatchHub]
 		public static bool Hub(
@@ -90,6 +90,19 @@ namespace lua.hotpatch
 							retval = null; // whatever will not be executed
 						}
 						// out or ref parameters
+						var parameters = method.GetParameters();
+						// out/ref object
+						for (int i = parameters.Length - 1; i >= 0; --i)
+						{
+							var param = parameters[i];
+							if (param.IsOut || param.ParameterType.IsByRef)
+							{
+								if (nrets <= 0) throw new Exception("number of return value dosen't match count of out/ref parameter.");
+								args[i] = L.ValueAt(-1);
+								Api.lua_pop(L, 1);
+								--nrets;
+							}
+						}
 						return shouldBreakReturn;
 					}
 				}
@@ -97,10 +110,10 @@ namespace lua.hotpatch
 			catch (Exception e)
 			{
 				Config.LogError(string.Format("patch for {0} was executed failed. {1}", method.ToString(), e.Message));
-				// dont	let	exception escape
+				// dont let exception escape
 			}
 			retval = Lua.GetDefaultValue(method.ReturnType);
-			return false; // dont break return
+			return true; // dont break return
 		}
 
 

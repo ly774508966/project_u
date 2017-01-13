@@ -62,7 +62,9 @@ namespace lua.test
 			var t = new ToBePatched();
 			ToBePatched.A a;
 			int b;
-			t.PatchOutParams(out a, out b);
+			int c = 10;
+			ToBePatched.A d = null;
+			t.PatchOutParams(out a, out b, ref c, ref d);
 		}
 
 
@@ -72,7 +74,9 @@ namespace lua.test
 			var t = new ToBePatched();
 			ToBePatched.A a;
 			int b;
-			t.CallTest1(out a, out b);
+			int c = 10;
+			ToBePatched.A d = null;
+			t.CallTest1(out a, out b,ref c, ref d);
 		}
 
 	}

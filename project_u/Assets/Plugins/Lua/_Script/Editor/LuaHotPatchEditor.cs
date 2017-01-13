@@ -103,6 +103,7 @@ namespace lua.hotpatch
 
 				var getMethodFromHandleMethodRef = m.Module.ImportReference(getMethodFromHandleMethod);
 				var objectTypeRef = m.Module.ImportReference(typeof(object));
+				var objectArrayTypeRef = m.Module.ImportReference(typeof(object[]));
 				var voidTypeRef = m.Module.ImportReference(typeof(void));
 
 
@@ -113,9 +114,15 @@ namespace lua.hotpatch
 
 				var continueCurrentMethod = ilProcessor.Create(OpCodes.Nop);
 				var anchorToArguments = ilProcessor.Create(OpCodes.Ldnull);
+				var anchorToRefOrOutArguments = ilProcessor.Create(OpCodes.Nop);
 				var anchorToReturn = ilProcessor.Create(OpCodes.Ret);
 
-				// local val for ret val (last one)
+				if (m.HasParameters)
+				{
+					// local var, argument array
+					m.Body.Variables.Add(new VariableDefinition(objectArrayTypeRef));
+				}
+				// local val, ret val (last one)
 				m.Body.Variables.Add(new VariableDefinition(objectTypeRef));
 
 				var firstInstruction = ilProcessor.Create(OpCodes.Nop);
@@ -135,6 +142,8 @@ namespace lua.hotpatch
 					// call
 					ilProcessor.Create(OpCodes.Call, hubMethodRef),
 					ilProcessor.Create(OpCodes.Brfalse, continueCurrentMethod),
+					// ref/out params
+					anchorToRefOrOutArguments,
 					// return part
 					anchorToReturn,
 					continueCurrentMethod
@@ -142,32 +151,95 @@ namespace lua.hotpatch
 
 				ReplaceInstruction(ilProcessor, firstInstruction, instructions);
 
+				var paramStart = 0;
+				if (!isStatic)
+				{
+					paramStart = 1;
+				}
+
 				// process arguments
+				bool hasRefOrOutParameter = false;
 				if (m.HasParameters)
 				{
 					var paramsInstructions = new List<Instruction>()
 					{
 						ilProcessor.Create(OpCodes.Ldc_I4, m.Parameters.Count),
-						ilProcessor.Create(OpCodes.Newarr, objectTypeRef)
+						ilProcessor.Create(OpCodes.Newarr, objectTypeRef),
+						ilProcessor.Create(OpCodes.Dup),
+						ilProcessor.Create(OpCodes.Stloc, m.Body.Variables.Count - 2)
 					};
 
 					for (int i = 0; i < m.Parameters.Count; ++i)
 					{
-						paramsInstructions.Add(ilProcessor.Create(OpCodes.Dup));
-						paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldc_I4, i));
-						paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldarg, i + 1));
-						if (m.Parameters[i].ParameterType.IsPrimitive)
+						var param = m.Parameters[i];
+						if (param.IsOut)
 						{
-							paramsInstructions.Add(ilProcessor.Create(OpCodes.Box, m.Parameters[i].ParameterType));
+							// placeholder for outs
+							hasRefOrOutParameter = true;
 						}
 						else
 						{
-							paramsInstructions.Add(ilProcessor.Create(OpCodes.Castclass, objectTypeRef));
+							paramsInstructions.Add(ilProcessor.Create(OpCodes.Dup));
+							paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldc_I4, i));
+							paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldarg, i + paramStart));
+							if (param.ParameterType.IsByReference)
+							{
+								hasRefOrOutParameter = true;
+								paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldind_Ref));
+								paramsInstructions.Add(ilProcessor.Create(OpCodes.Stelem_Any, objectTypeRef));
+							}
+							else
+							{
+								if (param.ParameterType.IsPrimitive)
+								{
+									paramsInstructions.Add(ilProcessor.Create(OpCodes.Box, param.ParameterType));
+								}
+								paramsInstructions.Add(ilProcessor.Create(OpCodes.Stelem_Ref));
+							}
 						}
-						paramsInstructions.Add(ilProcessor.Create(OpCodes.Stelem_Ref));
 					}
 					ReplaceInstruction(ilProcessor, anchorToArguments, paramsInstructions);
 				}
+
+				if (hasRefOrOutParameter)
+				{
+					var refOutInstructions = new List<Instruction>();
+					for (int i = 0; i < m.Parameters.Count; ++i)
+					{
+						var param = m.Parameters[i];
+						if (param.IsOut || param.ParameterType.IsByReference)
+						{
+							// ith_refOutArg = arg[i]
+
+
+							// ith_refOutArg
+							refOutInstructions.Add(ilProcessor.Create(OpCodes.Ldarg, i + paramStart));
+
+							// arg
+							refOutInstructions.Add(ilProcessor.Create(OpCodes.Ldloc, m.Body.Variables.Count - 2));
+
+							// arg[i]
+							refOutInstructions.Add(ilProcessor.Create(OpCodes.Ldc_I4, i));
+							refOutInstructions.Add(ilProcessor.Create(OpCodes.Ldelem_Ref));
+
+							// (type)arg[i]
+							TypeReference elemType = param.ParameterType.GetElementType();
+							if (elemType.IsPrimitive)
+							{
+								refOutInstructions.Add(ilProcessor.Create(OpCodes.Unbox_Any, elemType));
+							}
+							else
+							{
+								refOutInstructions.Add(ilProcessor.Create(OpCodes.Castclass, elemType));
+							}
+
+							// ith_refOutArg = (type)arg[i]
+							refOutInstructions.Add(ilProcessor.Create(OpCodes.Stind_Ref));
+						}
+					}
+					ReplaceInstruction(ilProcessor, anchorToRefOrOutArguments, refOutInstructions);
+				}
+
 
 				// process return
 				if (m.ReturnType.FullName != voidTypeRef.FullName)
@@ -191,7 +263,7 @@ namespace lua.hotpatch
 
 			foreach (var a in pendingAssembly)
 			{
-				a.Write(Application.dataPath + "/../Library/ScriptAssemblies/" + a.MainModule.Name);// + ".mod.dll");
+				a.Write(Application.dataPath + "/../Library/ScriptAssemblies/" + a.MainModule.Name);//+ ".mod.dll");
 			}
 
 			if (pendingAssembly.Count > 0)
@@ -224,10 +296,11 @@ namespace lua.hotpatch
 		[MenuItem("Lua/Deactive Hot Patch", priority = 101)]
 		static void DeactiveHotPatch()
 		{
-            File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll");
-            File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll.mdb");
+			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll");
+			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll.mdb");
 			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll");
 			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll.mdb");
+			AssetDatabase.Refresh();
 
 			File.WriteAllText(
 				Application.dataPath + "/_Dev_EmptyForRefresh.cs",

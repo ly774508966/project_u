@@ -57,11 +57,9 @@ public class ToBePatched
 	}
 
 	[LuaHotPatch]
-	public int PatchOutParams(out A a, out int b)
+	public int PatchOutParams(out A a, out int b, ref int c, ref A d)
 	{
-		a = new A();
-		b = 10;
-		return 10;
+		throw new System.Exception("not patched");
 	}
 
 	public A CallTest(int a, int b)
@@ -72,13 +70,13 @@ public class ToBePatched
 		return (A)retval;
 	}
 
-	public A CallTest1(out A a, out int b)
+	public A CallTest1(out A a, out int b, ref int c, ref A d)
 	{
 		a = null;
 		b = 10;
 		System.Reflection.MethodInfo k = null;
 		object retval;
-		LuaHotPatchLoader.Hub(k, this, out retval, a, b);
+		LuaHotPatchLoader.Hub(k, this, out retval, a, b, c, d);
 		return (A)retval;
 	}
 

@@ -44,40 +44,103 @@ namespace lua.test
 		}
 
 		[Test]
-		public void TestPatchStaticMethodWithLuaFunction()
+		public void TestPatchMe()
 		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchMe()",
+				"function() return true end");
 			ToBePatched.PatchMe();
 		}
 
 		[Test]
-		public void TestPatchThisOneWithParamAndReturnPrimitive()
+		public void TestPatchOutParam_Boolean()
 		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchOutParam_Boolean(System.Boolean&)",
+				"function(this) return true, true end"); // first true is breakReturn, the second is out boolean
 			var t = new ToBePatched();
-			t.PatchThisOneWithParamAndReturnPrimitive(new ToBePatched.A(), 10);
+			bool b;
+			t.PatchOutParam_Boolean(out b);
+			Assert.True(b);
 		}
 
 		[Test]
-		public void TestPatchOutParams()
+		public void TestPatchOutParam_Int()
 		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchOutParam_Int(System.Int32&)",
+				"function(this) return true, 42 end"); // first true is breakReturn, the second is out boolean
 			var t = new ToBePatched();
-			ToBePatched.A a;
 			int b;
-			int c = 10;
-			ToBePatched.A d = null;
-			t.PatchOutParams(out a, out b, ref c, ref d);
+			t.PatchOutParam_Int(out b);
+			Assert.AreEqual(42, b);
+		}
+
+		[Test]
+		public void TestPatchOutParam_Float()
+		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchOutParam_Float(System.Single&)",
+				"function(this) return true, 42 end"); // first true is breakReturn, the second is out boolean
+			var t = new ToBePatched();
+			float b;
+			t.PatchOutParam_Float(out b);
+			Assert.AreEqual(42f, b);
+		}
+
+		[Test]
+		public void TestPatchOutParam_Decimal()
+		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchOutParam_Decimal(System.Decimal&)",
+				"function(this) return true, 42 end"); // first true is breakReturn, the second is out boolean
+			var t = new ToBePatched();
+			decimal b;
+			t.PatchOutParam_Decimal(out b);
+			Assert.AreEqual(42, b);
+		}
+
+		[Test]
+		public void TestPatchRefParam_Double()
+		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchRefParam_Double(System.Double&)",
+				"function(this, p) return true, 22 + p end"); // first true is breakReturn, the second is out boolean
+			var t = new ToBePatched();
+			double b = 20;
+			t.PatchRefParam_Double(ref b);
+			Assert.AreEqual(42, b);
 		}
 
 
 		[Test]
-		public void TestSimple()
+		public void TestPatchRefParam_Struct()
 		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchRefParam_Struct(ToBePatched/StructToChange&)",
+				"function(this, p)\n" +
+				"  p.str = 'hello'\n" +
+				"  p.value = 42\n" +
+				"  return true, p\n" +
+				"end"); 
 			var t = new ToBePatched();
-			ToBePatched.A a;
-			int b;
-			int c = 10;
-			ToBePatched.A d = null;
-			t.CallTest1(out a, out b,ref c, ref d);
+			ToBePatched.StructToChange st = new ToBePatched.StructToChange();
+			t.PatchRefParam_Struct(ref st);
+			Assert.AreEqual("hello", st.str);
+			Assert.AreEqual(42, st.value);
 		}
+
+
+
+
+
+
+		[Test]
+		public void TestPatchWithIntPtr()
+		{
+			Assert.Fail("dont forget it");
+		}
+
 
 	}
 

@@ -419,6 +419,22 @@ namespace lua.test
 		}
 
 		[Test]
+		public void TestSetStructValue()
+		{
+			string thisMessage = string.Empty;
+			Config.LogError = (msg) => thisMessage = msg;
+			using (var f = LuaFunction.NewFunction(L, "function(st) st.floatValue = 42 end"))
+			{
+				var st = new TestStruct();
+				st.floatValue = 1f;
+				f.Invoke(null, st);
+				Assert.AreEqual(1f, st.floatValue);
+			}
+			Config.LogError = null;
+			Assert.True(string.IsNullOrEmpty(thisMessage), thisMessage);
+		}
+
+		[Test]
 		public void TestSettingField()
 		{
 			Api.lua_settop(L, 0);

@@ -31,69 +31,123 @@ public class ToBePatched
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+//	[LuaHotPatch]
 	public void PatchThisOne()
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+//	[LuaHotPatch]
 	public void PatchThisOneWithParam(int a, int b)
 	{
 		throw new System.Exception("not patched");
 	}
 
 	public class A { }
-	[LuaHotPatch]
+//	[LuaHotPatch]
 	public A PatchThisOneWithParamAndReturn(int a, int b)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+//	[LuaHotPatch]
 	public int PatchThisOneWithParamAndReturnPrimitive(A a, int b)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+//	[LuaHotPatch]
 	public int PatchOutParams(out A a, out int b, ref int c, ref A d)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	public A CallTest(int a, int b)
+	[LuaHotPatch]
+	public void PatchOutParam_Boolean(out bool a)
 	{
-		System.Reflection.MethodInfo k = null;
-		object retval;
-		LuaHotPatchLoader.Hub(k, this, out retval, a, b);
-		return (A)retval;
+		throw new System.Exception("not patched");
 	}
 
-	public A CallTest1(out A a, out int b, ref int c, ref A d)
+	[LuaHotPatch]
+	public void PatchOutParam_Int(out int a)
 	{
-		a = null;
-		b = 10;
-		System.Reflection.MethodInfo k = null;
-		object retval;
-		LuaHotPatchLoader.Hub(k, this, out retval, a, b, c, d);
-		return (A)retval;
+		throw new System.Exception("not patched");
 	}
 
-	public int CallTest2(A a, int b)
+	[LuaHotPatch]
+	public void PatchOutParam_Float(out float a)
 	{
-		System.Reflection.MethodInfo k = null;
-		object retval;
-		LuaHotPatchLoader.Hub(k, this, out retval, a, b);
-		if (retval != null)
-		{
-			var type = retval.GetType();
-			if (type.IsPrimitive)
-			{
-				return (int)retval;
-			}
-		}
-		return 0;
+		throw new System.Exception("not patched");
+	}
+
+	[LuaHotPatch]
+	public void PatchOutParam_Decimal(out decimal a)
+	{
+		throw new System.Exception("not patched");
+	}
+
+	[LuaHotPatch]
+	public void PatchRefParam_Double(ref double a)
+	{
+		throw new System.Exception("not patched");
+	}
+
+	public struct StructToChange
+	{
+		public string str;
+		public double value;
+	}
+	[LuaHotPatch]
+	public void PatchRefParam_Struct(ref StructToChange a)
+	{
+		throw new System.Exception("not patched");
+	}
+
+
+
+
+	// type test below
+
+	public void TestInt(out int a)
+	{
+		object[] arr = new object[10];
+		a = (int)arr[0];
+	}
+
+	public void TestUint(out uint a)
+	{
+		object[] arr = new object[10];
+		a = (uint)arr[0];
+	}
+
+	public void TestBoolean(out bool a)
+	{
+		object[] arr = new object[10];
+		a = (bool)arr[0];
+	}
+
+	public void TestUint(out char a)
+	{
+		object[] arr = new object[10];
+		a = (char)arr[0];
+	}
+
+	public void TestDecimal(out decimal a)
+	{
+		object[] arr = new object[10];
+		a = (decimal)arr[0];
+	}
+
+	public void TestRefBoolean(ref bool a)
+	{
+		object[] arr = new object[10];
+		a = (bool)arr[0];
+	}
+
+	public void TestRefDouble(ref double a)
+	{
+		object[] arr = new object[] { a };
+		a = (double)arr[0];
 	}
 }
 

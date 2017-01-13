@@ -32,24 +32,17 @@ namespace lua.hotpatch
 
 		[LuaHotPatchHub]
 		public static bool Hub(
+			string signature,
 			MethodInfo method, 
 			object target,
 			out	object retval, 
 			params object[] args)
 		{
-#if UNITY_EDITOR
-			if (method == null)
-			{
-				retval = null;
-				return false;
-			}
-			Config.Log("Invoking " + method.ToString());
-#endif
 			try
 			{
-				if (findPatch != null)
+				if (find != null)
 				{
-					using (var patch = (LuaFunction)findPatch.Invoke1(null, method.ToString()))
+					using (var patch = (LuaFunction)find.Invoke1(null, signature))
 					{
 						if (patch == null)
 						{
@@ -75,34 +68,33 @@ namespace lua.hotpatch
 							numArgs += args.Length;
 						}
 						L.Call(numArgs, Api.LUA_MULTRET);
-						var nrets = Api.lua_gettop(L) - top;
-						var shouldBreakReturn = (bool)L.ValueAt(-1);
-						Api.lua_pop(L, 1);
-						--nrets;
+						var end = Api.lua_gettop(L);
+						var retIdx = top + 1;
+						var shouldBreakReturn = (bool)L.ValueAt(retIdx);
+						++retIdx;
 						if (method.ReturnType != typeof(void))
 						{
-							retval = System.Convert.ChangeType(L.ValueAt(-1), method.ReturnType);
-							Api.lua_pop(L, 1);
-							--nrets;
+							retval = System.Convert.ChangeType(L.ValueAt(retIdx), method.ReturnType);
+							++retIdx;
 						}
 						else
 						{
 							retval = null; // whatever will not be executed
 						}
+
 						// out or ref parameters
 						var parameters = method.GetParameters();
 						// out/ref object
-						for (int i = parameters.Length - 1; i >= 0; --i)
+						for (int i = retIdx; i <= end; ++i)
 						{
-							var param = parameters[i];
+							int argIdx = i - retIdx;
+							var param = parameters[argIdx];
 							if (param.IsOut || param.ParameterType.IsByRef)
 							{
-								if (nrets <= 0) throw new Exception("number of return value dosen't match count of out/ref parameter.");
-								args[i] = L.ValueAt(-1);
-								Api.lua_pop(L, 1);
-								--nrets;
+								args[argIdx] = System.Convert.ChangeType(L.ValueAt(retIdx), param.ParameterType.GetElementType());
 							}
 						}
+						Api.lua_settop(L, top);
 						return shouldBreakReturn;
 					}
 				}
@@ -135,22 +127,21 @@ namespace lua.hotpatch
 			"end";
 
 
-		static LuaFunction findPatch;
+		static LuaFunction find;
+		static LuaFunction patch;
+		static LuaFunction remove;
 
 		internal static void Open(Lua L)
 		{
 			L.DoString(kLuaStub_Patch, 3, "hotpatch");
-			findPatch = (LuaFunction)L.ValueAt(-1);
-
-			var removePatch = (LuaFunction)L.ValueAt(-2);
-			var addPatch = (LuaFunction)L.ValueAt(-3);
+			find = (LuaFunction)L.ValueAt(-1);
+			remove = (LuaFunction)L.ValueAt(-2);
+			patch = (LuaFunction)L.ValueAt(-3);
 
 			var hotpatch = new LuaTable(L);
-			hotpatch["patch"] = addPatch;
-			addPatch.Dispose();
-			hotpatch["remove"] = removePatch;
-			removePatch.Dispose();
-			hotpatch["find"] = findPatch; // still need it
+			hotpatch["patch"] = patch;
+			hotpatch["remove"] = remove;
+			hotpatch["find"] = find;
 
 			hotpatch.Push();
 			Api.lua_setglobal(L, "hotpatch");
@@ -161,10 +152,22 @@ namespace lua.hotpatch
 
 		internal static void Close()
 		{
-			findPatch.Dispose();
+			if (find != null)
+				find.Dispose();
+			if (remove != null)
+				remove.Dispose();
+			if (patch != null)
+				patch.Dispose();
 		}
 
-
+		public static void Patch(string signature, string patchScript)
+		{
+			var L = patch.CheckValid();
+			using (var f = LuaFunction.NewFunction(L, patchScript, "patch " + signature))
+			{
+				patch.Invoke(null, signature, f);
+			}
+		}
 
 
 

@@ -311,6 +311,7 @@ namespace lua
 			hotpatch.LuaHotPatchLoader.Open(this);
 
 
+
 			// set default path
 #if UNITY_EDITOR
 			// path

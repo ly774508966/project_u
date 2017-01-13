@@ -308,6 +308,9 @@ namespace lua
 				Config.LogError("Replace searchers failed." + e.Message);
 			}
 
+			hotpatch.LuaHotPatchLoader.Open(this);
+
+
 
 			// set default path
 #if UNITY_EDITOR
@@ -337,6 +340,8 @@ namespace lua
 
 		public void Dispose()
 		{
+			hotpatch.LuaHotPatchLoader.Close();
+
 			checkError.Dispose();
 			checkError = null;
 
@@ -351,7 +356,7 @@ namespace lua
 
 			csharp.Dispose();
 			csharp = null;
-
+			
 			Api.lua_close(L);
 			L = IntPtr.Zero;
 		}
@@ -1166,9 +1171,9 @@ namespace lua
 
 		static readonly object[] csharpArgs_NoArgs = null;
 
-		static object GetDefaultValue(Type type)
+		internal static object GetDefaultValue(Type type)
 		{
-			if (type.IsValueType)
+			if (type.IsValueType  && type != typeof(void))
 			{
 				return Activator.CreateInstance(type);
 			}
@@ -2033,62 +2038,62 @@ namespace lua
 		{
 			if (type == typeof(int))
 			{
-				converted = (int)(long)value;
+				converted = Convert.ToInt32(value);
 				return true;
 			}
 			else if (type == typeof(float))
 			{
-				converted = (float)(double)value;
+				converted = Convert.ToSingle(value);
 				return true;
 			}
 			else if (type == typeof(long))
 			{
-				converted = (long)value;
+				converted = Convert.ToInt64(value);
 				return true;
 			}
 			else if (type == typeof(double))
 			{
-				converted = (double)value;
+				converted = Convert.ToDouble(value);
 				return true;
 			}
 			else if (type == typeof(short))
 			{
-				converted = (short)(long)value;
+				converted = Convert.ToInt16(value);
 				return true;
 			}
 			else if (type == typeof(uint))
 			{
-				converted = (uint)(long)value;
+				converted = Convert.ToUInt32(value);
 				return true;
 			}
 			else if (type == typeof(ulong))
 			{
-				converted = (long)value;
+				converted = Convert.ToUInt64(value);
 				return true;
 			}
 			else if (type == typeof(ushort))
 			{
-				converted = (ushort)(long)value;
-				return true;
-			}
-			else if (type == typeof(ushort))
-			{
-				converted = (ushort)(long)value;
+				converted = Convert.ToUInt16(value);
 				return true;
 			}
 			else if (type == typeof(char))
 			{
-				converted = (char)(long)value;
+				converted = Convert.ToChar(value);
 				return true;
 			}
 			else if (type == typeof(byte))
 			{
-				converted = (byte)(long)value;
+				converted = Convert.ToByte(value);
 				return true;
 			}
 			else if (type == typeof(sbyte))
 			{
-				converted = (sbyte)(long)value;
+				converted = Convert.ToSByte(value);
+				return true;
+			}
+			else if (type == typeof(decimal))
+			{
+				converted = Convert.ToDecimal(value);
 				return true;
 			}
 			converted = null;
@@ -2097,7 +2102,7 @@ namespace lua
 
 		internal void SetMember(object thisObject, Type type, string memberName, object value)
 		{
-			Assert(type.IsClass, string.Format("Setting property {0} of {1} object", memberName, type.ToString()));
+			Assert(type.IsClass || type.IsAnsiClass, string.Format("Setting property {0} of {1} object", memberName, type.ToString()));
 
 			var members = type.GetMember(memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
 			Assert(members.Length > 0, string.Format("Cannot find property with name {0} of type {1}", memberName, type.ToString()));

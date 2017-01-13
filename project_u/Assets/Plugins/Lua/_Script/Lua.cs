@@ -308,6 +308,8 @@ namespace lua
 				Config.LogError("Replace searchers failed." + e.Message);
 			}
 
+			hotpatch.LuaHotPatchLoader.Open(this);
+
 
 
 			// set default path
@@ -338,6 +340,7 @@ namespace lua
 
 		public void Dispose()
 		{
+			hotpatch.LuaHotPatchLoader.Close();
 
 			checkError.Dispose();
 			checkError = null;
@@ -1168,9 +1171,9 @@ namespace lua
 
 		static readonly object[] csharpArgs_NoArgs = null;
 
-		static object GetDefaultValue(Type type)
+		internal static object GetDefaultValue(Type type)
 		{
-			if (type.IsValueType)
+			if (type.IsValueType  && type != typeof(void))
 			{
 				return Activator.CreateInstance(type);
 			}

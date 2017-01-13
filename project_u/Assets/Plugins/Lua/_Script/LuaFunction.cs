@@ -46,7 +46,7 @@ namespace lua
 			}
 		}
 
-		Lua CheckValid()
+		internal Lua CheckValid()
 		{
 			if (L_.valid)
 				return L_;

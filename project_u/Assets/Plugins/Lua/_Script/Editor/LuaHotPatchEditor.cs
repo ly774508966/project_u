@@ -58,64 +58,6 @@ namespace lua.hotpatch
 			return MemberInfoCore(memberSelectionExpression.Body, null/*param*/);
 		}
 
-		static Dictionary<string, OpCode> _StInd = new Dictionary<string, OpCode>
-		{
-			{ "System.Boolean", OpCodes.Stind_I1 },
-			{ "System.Byte", OpCodes.Stind_I1 },
-			{ "System.SByte", OpCodes.Stind_I1 },
-			{ "System.Int8", OpCodes.Stind_I1 },
-			{ "System.UInt8", OpCodes.Stind_I1 },
-			{ "System.Char", OpCodes.Stind_I2 },
-			{ "System.Int16", OpCodes.Stind_I2 },
-			{ "System.UInt16", OpCodes.Stind_I2 },
-			{ "System.Int32", OpCodes.Stind_I4 },
-			{ "System.UInt32", OpCodes.Stind_I4 },
-			{ "System.Int64", OpCodes.Stind_I8 },
-			{ "System.UInt64", OpCodes.Stind_I8 },
-			{ "System.Single", OpCodes.Stind_R4 },
-			{ "System.Double", OpCodes.Stind_R8 },
-			{ "System.IntPtr", OpCodes.Stind_I },
-			{ "System.UIntPtr", OpCodes.Stind_I },
-		};
-		static OpCode GetStindFromType(TypeReference type)
-		{
-			OpCode op;
-			if (_StInd.TryGetValue(type.FullName, out op))
-			{
-				return op;
-			}
-			return OpCodes.Nop;
-		}
-
-		static Dictionary<string, OpCode> _LdInd = new Dictionary<string, OpCode>
-		{
-			{ "System.Boolean", OpCodes.Ldind_I1 },
-			{ "System.Byte", OpCodes.Ldind_U1 },
-			{ "System.SByte", OpCodes.Ldind_I1 },
-			{ "System.Int8", OpCodes.Ldind_I1 },
-			{ "System.UInt8", OpCodes.Ldind_U1 },
-			{ "System.Char", OpCodes.Ldind_I2 },
-			{ "System.Int16", OpCodes.Ldind_I2 },
-			{ "System.UInt16", OpCodes.Ldind_U2 },
-			{ "System.Int32", OpCodes.Ldind_I4 },
-			{ "System.UInt32", OpCodes.Ldind_U4 },
-			{ "System.Int64", OpCodes.Ldind_I8 },
-			{ "System.UInt64", OpCodes.Ldind_I8 },
-			{ "System.Single", OpCodes.Ldind_R4 },
-			{ "System.Double", OpCodes.Ldind_R8 },
-			{ "System.IntPtr", OpCodes.Ldind_I },
-			{ "System.UIntPtr", OpCodes.Ldind_I },
-		};
-		static OpCode GetLdindFromType(TypeReference type)
-		{
-			OpCode op;
-			if (_LdInd.TryGetValue(type.FullName, out op))
-			{
-				return op;
-			}
-			return OpCodes.Nop;
-		}
-
 		[MenuItem("Lua/Active Hot Patch (Mod Test)", priority = 100)]
 		static void ActiveHotPatchModeTest()
 		{
@@ -254,19 +196,7 @@ namespace lua.hotpatch
 
 								var elemType = param.ParameterType.GetElementType();
 
-								if (elemType.IsPrimitive)
-								{
-									var op = GetLdindFromType(elemType);
-									if (op != OpCodes.Nop)
-									{
-										paramsInstructions.Add(ilProcessor.Create(op));
-									}
-									else
-									{
-										paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldobj, elemType));
-									}
-								}
-								else if (elemType.IsValueType)
+								if (elemType.IsValueType)
 								{
 									paramsInstructions.Add(ilProcessor.Create(OpCodes.Ldobj, elemType));
 								}
@@ -322,19 +252,7 @@ namespace lua.hotpatch
 							{
 								refOutInstructions.Add(ilProcessor.Create(OpCodes.Unbox_Any, elemType));
 							}
-							if (elemType.IsPrimitive)
-							{
-								var op = GetStindFromType(elemType);
-								if (op != OpCodes.Nop)
-								{
-									refOutInstructions.Add(ilProcessor.Create(op));
-								}
-								else
-								{
-									refOutInstructions.Add(ilProcessor.Create(OpCodes.Stobj, elemType)); // just in case
-								}
-							}
-							else if (elemType.IsValueType)
+							if (elemType.IsValueType)
 							{
 								refOutInstructions.Add(ilProcessor.Create(OpCodes.Stobj, elemType));
 							}

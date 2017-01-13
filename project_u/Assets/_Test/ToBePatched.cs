@@ -31,37 +31,6 @@ public class ToBePatched
 		throw new System.Exception("not patched");
 	}
 
-//	[LuaHotPatch]
-	public void PatchThisOne()
-	{
-		throw new System.Exception("not patched");
-	}
-
-//	[LuaHotPatch]
-	public void PatchThisOneWithParam(int a, int b)
-	{
-		throw new System.Exception("not patched");
-	}
-
-	public class A { }
-//	[LuaHotPatch]
-	public A PatchThisOneWithParamAndReturn(int a, int b)
-	{
-		throw new System.Exception("not patched");
-	}
-
-//	[LuaHotPatch]
-	public int PatchThisOneWithParamAndReturnPrimitive(A a, int b)
-	{
-		throw new System.Exception("not patched");
-	}
-
-//	[LuaHotPatch]
-	public int PatchOutParams(out A a, out int b, ref int c, ref A d)
-	{
-		throw new System.Exception("not patched");
-	}
-
 	[LuaHotPatch]
 	public void PatchOutParam_Boolean(out bool a)
 	{
@@ -103,11 +72,28 @@ public class ToBePatched
 		throw new System.Exception("not patched");
 	}
 
+	public struct ClassToChange
+	{
+		public string str;
+		public double value;
+	}
+	[LuaHotPatch]
+	public void PatchRefParam_Class(ref ClassToChange a)
+	{
+		throw new System.Exception("not patched");
+	}
 
+	[LuaHotPatch]
+	int InnerSubOrAdd(int a, int b)
+	{
+		return a + b;
+	}
+	public int SubOrAdd(int a, int b)
+	{
+		return InnerSubOrAdd(a, b);
+	}
 
-
-	// type test below
-
+	// decompiling test below
 	public void TestInt(out int a)
 	{
 		object[] arr = new object[10];

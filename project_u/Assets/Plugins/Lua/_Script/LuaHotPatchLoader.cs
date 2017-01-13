@@ -169,6 +169,11 @@ namespace lua.hotpatch
 			}
 		}
 
+		public static void Remove(string signature)
+		{
+			remove.Invoke(null, signature);
+		}
+
 
 
 	}

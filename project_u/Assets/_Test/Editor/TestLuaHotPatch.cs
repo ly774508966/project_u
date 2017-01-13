@@ -132,8 +132,41 @@ namespace lua.test
 
 
 
+		[Test]
+		public void TestPatchRefParam_Class()
+		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ToBePatched::PatchRefParam_Class(ToBePatched/ClassToChange&)",
+				"function(this, p)\n" +
+				"  p.str = 'hello'\n" +
+				"  p.value = 42\n" +
+				"  return true, p\n" +
+				"end"); 
+			var t = new ToBePatched();
+			ToBePatched.ClassToChange st = new ToBePatched.ClassToChange();
+			t.PatchRefParam_Class(ref st);
+			Assert.AreEqual("hello", st.str);
+			Assert.AreEqual(42, st.value);
+		}
 
-
+		[Test]
+		public void TestPatchOrNotPatch()
+		{
+			var t = new ToBePatched();
+			var r = t.SubOrAdd(10, 20);
+			Assert.AreEqual(30, r);
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Int32 ToBePatched::InnerSubOrAdd(System.Int32,System.Int32)",
+				"function(this, a, b)\n" +
+				"  return true, a - b\n" +
+				"end"); 
+			r = t.SubOrAdd(10, 20);
+			Assert.AreEqual(-10, r);
+			lua.hotpatch.LuaHotPatchLoader.Remove(
+				"System.Int32 ToBePatched::InnerSubOrAdd(System.Int32,System.Int32)");
+			r = t.SubOrAdd(10, 20);
+			Assert.AreEqual(30, r);
+		}
 
 		[Test]
 		public void TestPatchWithIntPtr()

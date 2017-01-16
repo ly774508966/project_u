@@ -65,16 +65,40 @@ namespace lua.hotpatch
 		}
 
 		[MenuItem("Lua/Active Hot Patch", priority = 100)]
-		static void ActiveHotPatch()
+		public static void ActiveHotPatch()
 		{
 			ActiveHotPatch(false);
 		}
 
+		static List<string> pathOfAssemblies;
+		public static void PatchAssemblies(List<string> pathOfAssemblies_)
+		{
+			pathOfAssemblies = pathOfAssemblies_;
+		}
+
 		static void ActiveHotPatch(bool modTest)
 		{
-			var allTypes = AssemblyDefinition.ReadAssembly(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll").Modules
-				.Union(AssemblyDefinition.ReadAssembly(Application.dataPath	+ "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll").Modules)
-				.SelectMany(m => m.Types).ToArray();
+			if (pathOfAssemblies == null)
+			{
+				PatchAssemblies(
+					new List<string>() {
+						Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll",
+						Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll"
+					});
+			}
+
+			IEnumerable<TypeDefinition> allTypes = null;
+			foreach (var p in pathOfAssemblies)
+			{
+				if (allTypes == null)
+				{
+					allTypes = AssemblyDefinition.ReadAssembly(p).Modules.SelectMany(m => m.GetTypes());
+				}
+				else
+				{
+					allTypes = allTypes.Union(AssemblyDefinition.ReadAssembly(p).Modules.SelectMany(m => m.GetTypes()));
+				}
+			}
 
 			var allMethods = allTypes
 				.Where(t =>	t.HasMethods)
@@ -291,7 +315,11 @@ namespace lua.hotpatch
 
 			foreach (var a in pendingAssembly)
 			{
-				a.Write(Application.dataPath + "/../Library/ScriptAssemblies/" + a.MainModule.Name + (modTest ? ".mod.dll" : ""));
+				var path = pathOfAssemblies.Find(s => s.Contains(a.MainModule.Name));
+				if (path != null)
+				{
+					a.Write(path + (modTest ? ".mod.dll" : ""));
+				}
 			}
 
 			if (pendingAssembly.Count > 0)
@@ -299,8 +327,7 @@ namespace lua.hotpatch
 				UnityEditorInternal.InternalEditorUtility.RequestScriptReload();
 			}
 
-
-
+			pathOfAssemblies = null;
 		}
 
 		static void ReplaceInstruction(ILProcessor ilProcessor, Instruction anchorInstruction, IEnumerable<Instruction> instructions)

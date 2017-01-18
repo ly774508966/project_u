@@ -425,6 +425,26 @@ namespace lua
 				}
 			}
 		}
+
+		public void Reload()
+		{
+			if (Application.isPlaying)
+			{
+				using (var removeLoaded = LuaFunction.NewFunction(
+					L,
+					"function()\n" +
+					" package.loaded['" + scriptName + "'] = nil\n" +
+					"end"))
+				{
+					removeLoaded.Invoke();
+					OnDestroy();
+					Destroy(instanceBehaviour);
+					instanceBehaviour = null;
+					Awake();
+					Start();
+				}
+			}
+		}
 #endif
 	}
 }

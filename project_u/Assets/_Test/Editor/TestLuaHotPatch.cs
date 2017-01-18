@@ -168,13 +168,6 @@ namespace lua.test
 			Assert.AreEqual(30, r);
 		}
 
-		[Test]
-		public void TestPatchWithIntPtr()
-		{
-			Assert.Fail("dont forget it");
-		}
-
-
 	}
 
 }

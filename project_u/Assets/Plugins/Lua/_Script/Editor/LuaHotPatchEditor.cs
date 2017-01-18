@@ -34,6 +34,17 @@ using System.IO;
 
 namespace lua.hotpatch
 {
+
+	[InitializeOnLoad]
+	public class LuaHotPatch_AutoApply
+	{
+		static LuaHotPatch_AutoApply()
+		{
+			Debug.Log("LuaHotPatch_AutoApply executed.");
+		}
+	}
+
+
 	public class LuaHotPatchEditor
 	{
 		// http://stackoverflow.com/a/9469697/84998

@@ -1405,18 +1405,9 @@ namespace lua
 					var obj = ObjectAt(argStart + i);
 					if (obj != null)
 					{
-						var refToType = Api.LUA_NOREF;
-						if (obj is Type)
-						{
-							refToType = GetCachedTypeRef(((Type)obj).AssemblyQualifiedName);
-						}
-						else
-						{
-							refToType = GetCachedTypeRef(obj.GetType().AssemblyQualifiedName);
-						}
-						sb.Append(refToType);
+						sb.Append(obj.GetType().FullName);
 					}
-					sb.Append('.');
+					sb.Append('|');
 				}
 				else
 				{
@@ -1451,7 +1442,7 @@ namespace lua
 				Api.luaL_traceback(L, L, "===== script =====", 1);
 				var luaStack = Api.lua_tostring(L, -1);
 				Api.lua_pop(L, 1);
-				message = string.Format("Error: {0}\n{1}", message, luaStack);
+				message = string.Format("error: {0}\n{1}", message, luaStack);
 				Config.LogError(message);
 				var host = CheckHost(L);
 				if (host.pushError != null) // pushError may not be prepared, 
@@ -1569,7 +1560,7 @@ namespace lua
 
 			var isInvokingFromClass = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
 			var obj = host.ObjectAt(Api.lua_upvalueindex(2));
-			host.Assert(obj != null, "Invoking target not found at upvalueindex(2)");
+			host.Assert(obj != null, "invoking target not found at upvalueindex(2)");
 			string methodName;
 			if (!Api.luaL_teststring_strict(L, Api.lua_upvalueindex(3), out methodName))
 			{
@@ -1618,7 +1609,7 @@ namespace lua
 			if (isInvokingFromClass)
 			{
 				type = (System.Type)obj;
-				host.Assert(invokingStaticMethod, string.Format("Invoking static method {0} from class {1} with incorrect syntax", methodName, type.ToString()));
+				host.Assert(invokingStaticMethod, string.Format("invoking static method {0} from class {1} with incorrect syntax", methodName, type.ToString()));
 			}
 			else
 			{
@@ -1642,12 +1633,12 @@ namespace lua
 					var m = (System.Reflection.MethodInfo)member;
 					if (m.IsStatic)
 					{
-						host.Assert(invokingStaticMethod, string.Format("Invoking static method {0} with incorrect syntax.", m.ToString()));
+						host.Assert(invokingStaticMethod, string.Format("invoking static method {0} with incorrect syntax.", m.ToString()));
 						target = null;
 					}
 					else
 					{
-						host.Assert(!invokingStaticMethod, string.Format("Invoking non-static method {0} with incorrect syntax.", m.ToString()));
+						host.Assert(!invokingStaticMethod, string.Format("invoking non-static method {0} with incorrect syntax.", m.ToString()));
 					}
 					try
 					{
@@ -1681,7 +1672,7 @@ namespace lua
 						}
 						additionalMessage = sb.ToString();
 					}
-					throw new Exception(string.Format("No corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
+					throw new Exception(string.Format("no corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
 				}
 			}
 			else
@@ -1759,13 +1750,6 @@ namespace lua
 			}
 		}
 
-		Dictionary<string, int> typeCache = new Dictionary<string, int>();
-
-		int GetCachedTypeRef(string assemblyQualifiedName)
-		{
-			return typeCache[assemblyQualifiedName];
-		}
-
 		static int ImportInternal_(IntPtr L) // called only if the type not imported
 		{
 			var host = CheckHost(L);
@@ -1779,35 +1763,19 @@ namespace lua
 			{
 				throw new Exception(string.Format("Cannot import type {0}", typename));
 			}
-			int refToType;
-			if (!host.typeCache.TryGetValue(type.AssemblyQualifiedName, out refToType))
+			Config.Log(string.Format("{0} imported.", typename));
+			if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
 			{
-				refToType = Api.LUA_NOREF;
+				Api.lua_getmetatable(L, -1); // append info in metatable
+
+				Api.lua_pushboolean(L, true);
+				Api.lua_rawseti(L, -2, 1); // isClassObject = true
+
+				Api.lua_pushcclosure(L, MetaMethod.MetaConstructFunction, 0);
+				Api.lua_setfield(L, -2, "__call");
+
+				Api.lua_pop(L, 1);
 			}
-
-			if (refToType != Api.LUA_NOREF)
-			{
-				host.PushRef(refToType);
-			}
-			else
-			{
-				Config.Log(string.Format("{0} imported.", typename));
-				if (host.PushObject(type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
-				{
-					Api.lua_getmetatable(L, -1); // append info in metatable
-
-					Api.lua_pushboolean(L, true);
-					Api.lua_rawseti(L, -2, 1); // isClassObject = true
-
-					Api.lua_pushcclosure(L, MetaMethod.MetaConstructFunction, 0);
-					Api.lua_setfield(L, -2, "__call");
-
-					Api.lua_pop(L, 1);
-				}
-				refToType = host.MakeRefAt(-1);
-				host.typeCache[type.AssemblyQualifiedName] = refToType;
-			}
-
 			return 1;
 		}
 

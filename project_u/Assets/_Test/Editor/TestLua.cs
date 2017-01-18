@@ -217,7 +217,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Assert.True(thisMessage.IndexOf("Invoking non-static method Int32 TestMethod() with incorrect syntax") > 0);
+				Assert.True(thisMessage.IndexOf("invoking non-static method Int32 TestMethod() with incorrect syntax") > 0);
 				Assert.Greater(thisMessage.Length, 0);
 				Config.LogError = null;
 				Api.lua_settop(L, 0);
@@ -272,7 +272,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Assert.True(thisMessage.IndexOf("Invoking static method Int32 TestStaticMethod() with incorrect syntax") > 0);
+				Assert.True(thisMessage.IndexOf("invoking static method Int32 TestStaticMethod() with incorrect syntax") > 0);
 				Assert.Greater(thisMessage.Length, 0);
 				Config.LogError = null;
 				Api.lua_settop(L, stackTop);
@@ -1187,7 +1187,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Assert.True(thisMessage.IndexOf("No corresponding csharp method") > 0);
+				Assert.True(thisMessage.IndexOf("no corresponding csharp method") > 0);
 				Debug.Log("Catched Error: " + thisMessage);
 				Assert.Greater(thisMessage.Length, 0);
 				Config.LogError = null;
@@ -1211,7 +1211,7 @@ namespace lua.test
 			}
 			catch (System.Exception e)
 			{
-				Assert.True(thisMessage.IndexOf("No corresponding csharp method") > 0);
+				Assert.True(thisMessage.IndexOf("no corresponding csharp method") > 0);
 				Debug.Log("Catched Error: " + thisMessage);
 				Assert.Greater(thisMessage.Length, 0);
 				Config.LogError = null;

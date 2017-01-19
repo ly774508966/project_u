@@ -28,7 +28,7 @@ function LuaExample:Awake(instance)
 	UnityDebug.Log(LuaExample.value0)
 	UnityDebug.Log('staticValue0 = '..instance.staticValue0)
 
-	local obj = self:FindGameObjectByKey('MyObject')
+	local obj = self:FindGameObject('MyObject')
 	if obj then
 		UnityDebug.Log('Found object with key MyObject, it named ' .. obj.name)
 	else

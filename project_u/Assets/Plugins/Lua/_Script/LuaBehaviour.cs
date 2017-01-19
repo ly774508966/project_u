@@ -114,7 +114,22 @@ namespace lua
 
 			_Count
 		}
-		int[] messageRef = new int[(int)Message._Count];
+		int[] messageRef_ = null;
+		int[] messageRef
+		{
+			get
+			{
+				if (messageRef_ == null)
+				{
+					messageRef_ = new int[(int)Message._Count];
+					for (int i = 0; i < messageRef_.Length; ++i)
+					{
+						messageRef_[i] = Api.LUA_NOREF;
+					}
+				}
+				return messageRef_;
+			}
+		}
 
 		int messageFlag = 0;
 		static int MakeFlag(Message m)
@@ -262,9 +277,23 @@ namespace lua
 			SendLuaMessage(Message.OnDestroy);
 			if (L.valid)
 			{
+				for (int i = 0; i < messageRef.Length; ++i)
+				{
+					var r = messageRef[i];
+					if (r != Api.LUA_NOREF)
+					{
+						Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, r);
+					}
+					messageRef[i] = Api.LUA_NOREF;
+				}
+				messageFlag = 0;
+
 				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 				if (handleToThis != Api.LUA_NOREF)
 					L.Unref(handleToThis);
+				luaBehaviourRef = Api.LUA_NOREF;
+				handleToThis = Api.LUA_NOREF;
+				scriptLoaded_ = false;
 			}
 		}
 
@@ -422,6 +451,29 @@ namespace lua
 				{
 					LoadInitFuncToBehaviourTable(L);
 					RunInitFuncOnBehaviourTable(L);
+				}
+			}
+		}
+
+		public void Reload()
+		{
+			if (Application.isPlaying)
+			{
+				using (var removeLoaded = LuaFunction.NewFunction(
+					L,
+					"function()\n" +
+					" package.loaded['" + scriptName + "'] = nil\n" +
+					"end"))
+				{
+					removeLoaded.Invoke();
+					// https://docs.unity3d.com/Manual/ExecutionOrder.html
+					OnDisable();
+					OnDestroy();
+					Destroy(instanceBehaviour);
+					instanceBehaviour = null;
+					Awake();
+					OnEnable();
+					Start();
 				}
 			}
 		}

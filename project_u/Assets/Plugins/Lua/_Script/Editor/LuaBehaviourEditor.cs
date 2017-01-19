@@ -72,6 +72,12 @@ namespace lua
 			return System.Text.Encoding.UTF8.GetString(bytes);
 		}
 
+		void ReloadAtRunTime()
+		{
+			var lb = target as LuaBehaviour;
+			lb.Reload();
+		}
+
 		void Reload()
 		{
 			var lb = target as LuaBehaviour;
@@ -409,6 +415,13 @@ namespace lua
 					Undo.RecordObject(lb, "LuaBehaviour.ChangeInitChunk");
 					lb.SetInitChunk(null);
 					Reload();
+				}
+			}
+			if (Application.isPlaying)
+			{
+				if (GUILayout.Button("Reload"))
+				{
+					ReloadAtRunTime();
 				}
 			}
 			EditorGUILayout.EndHorizontal();

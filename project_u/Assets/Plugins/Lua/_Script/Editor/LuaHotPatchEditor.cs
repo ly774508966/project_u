@@ -35,16 +35,6 @@ using System.IO;
 namespace lua.hotpatch
 {
 
-	[InitializeOnLoad]
-	public class LuaHotPatch_AutoApply
-	{
-		static LuaHotPatch_AutoApply()
-		{
-			Debug.Log("LuaHotPatch_AutoApply executed.");
-		}
-	}
-
-
 	public class LuaHotPatchEditor
 	{
 		// http://stackoverflow.com/a/9469697/84998
@@ -69,6 +59,7 @@ namespace lua.hotpatch
 			return MemberInfoCore(memberSelectionExpression.Body, null/*param*/);
 		}
 
+
 		[MenuItem("Lua/Active Hot Patch (Mod Test)", priority = 100)]
 		static void ActiveHotPatchModeTest()
 		{
@@ -92,9 +83,10 @@ namespace lua.hotpatch
 			if (pathOfAssemblies == null)
 			{
 				PatchAssemblies(
-					new List<string>() {
-						Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll",
-						Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll"
+					new	List<string>()
+					{
+						Assembly.Load("Assembly-CSharp").Location,
+						Assembly.Load("Assembly-CSharp-firstpass").Location
 					});
 			}
 
@@ -137,7 +129,6 @@ namespace lua.hotpatch
 				.ToArray();
 
 			var getMethodFromHandleMethod = (MethodInfo)MemberInfo(() => MethodInfo.GetMethodFromHandle(new RuntimeMethodHandle()));
-
 
 			var pendingAssembly = new HashSet<AssemblyDefinition>();
 			foreach (var m in injectingTargets)
@@ -362,12 +353,15 @@ namespace lua.hotpatch
 		[MenuItem("Lua/Deactive Hot Patch", priority = 101)]
 		static void DeactiveHotPatch()
 		{
-			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll");
-			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp.dll.mdb");
-			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll");
-			File.Delete(Application.dataPath + "/../Library/ScriptAssemblies/Assembly-CSharp-firstpass.dll.mdb");
+			var csharp_dll = Assembly.Load("Assembly-CSharp").Location;
+			var csharp_firstpass_dll = Assembly.Load("Assembly-CSharp-firstpass").Location;
+			File.Delete(csharp_dll);
+			File.Delete(csharp_dll + ".mdb");
+			File.Delete(csharp_firstpass_dll);
+			File.Delete(csharp_firstpass_dll + ".mdb");
 			AssetDatabase.Refresh();
 
+			// trigger a script	copmile
 			File.WriteAllText(
 				Application.dataPath + "/_Dev_EmptyForRefresh.cs",
 				"//	generated for recompiling "	+ DateTime.Now.ToString() +	"\n");
@@ -375,13 +369,6 @@ namespace lua.hotpatch
 				Application.dataPath + "/Plugins/_Dev_EmptyForRefresh-firstpass.cs",
 				"//	generated for recompiling "	+ DateTime.Now.ToString() +	"\n");
 			AssetDatabase.Refresh();
-			Debug.LogWarning("restart to make it take effect.");
-		}
-
-		[MenuItem("Lua/Reload C# Scripts", priority = 102)]
-		static void Reload()
-		{
-			UnityEditorInternal.InternalEditorUtility.RequestScriptReload();
 		}
 	}
 }

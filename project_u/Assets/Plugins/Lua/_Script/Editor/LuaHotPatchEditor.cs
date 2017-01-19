@@ -25,6 +25,7 @@ using UnityEditor;
 using UnityEngine;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Cecil.Mdb;
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -89,13 +90,14 @@ namespace lua.hotpatch
 						Assembly.Load("Assembly-CSharp-firstpass").Location
 					});
 			}
-
+			var readerParameters = new ReaderParameters { ReadSymbols = true };
+			var writerParameters = new WriterParameters { WriteSymbols = true };
 			IEnumerable<TypeDefinition> allTypes = null;
 			foreach (var p in pathOfAssemblies)
 			{
 				if (allTypes == null)
 				{
-					allTypes = AssemblyDefinition.ReadAssembly(p).Modules.SelectMany(m => m.GetTypes());
+					allTypes = AssemblyDefinition.ReadAssembly(p, readerParameters).Modules.SelectMany(m => m.GetTypes());
 				}
 				else
 				{
@@ -320,7 +322,7 @@ namespace lua.hotpatch
 				var path = pathOfAssemblies.Find(s => s.Contains(a.MainModule.Name));
 				if (path != null)
 				{
-					a.Write(path + (modTest ? ".mod.dll" : ""));
+					a.Write(path + (modTest ? ".mod.dll" : ""), writerParameters);
 				}
 			}
 

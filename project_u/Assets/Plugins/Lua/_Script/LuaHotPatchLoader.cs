@@ -28,8 +28,6 @@ namespace lua.hotpatch
 {
 	public class LuaHotPatchLoader
 	{
-		// https://www.codeproject.com/articles/438868/inline-msil-in-csharp-vb-net-and-generic-pointers
-
 		[LuaHotPatchHub]
 		public static bool Hub(
 			string signature,
@@ -117,7 +115,7 @@ namespace lua.hotpatch
 			"  patches[sig] = func\n" + 
 			"  return old\n" +
 			"end,\n" +
-			"function(sig)\n" +  // remove path
+			"function(sig)\n" +  // remove patch
 			"  local old = patches[sig]\n" +
 			"  patches[sig] = nil\n" +
 			"  return old\n" +

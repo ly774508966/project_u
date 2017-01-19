@@ -25,7 +25,6 @@ using UnityEditor;
 using UnityEngine;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
-using Mono.Cecil.Mdb;
 using System;
 using System.Linq;
 using System.Collections.Generic;

@@ -7,7 +7,7 @@ Check [WIKI](https://github.com/xiaobin83/project_u/wiki)
 * Execute Lua script with C# reflection support
 * Hot-patch marked C# code on the fly.
 * Provide LuaBehaviour which works as MonoBehaviour.
-* Debug Lua script with VSCode with [devCAT.lua-debug](https://marketplace.visualstudio.com/items?itemName=devCAT.lua-debug) (modified version)
+* Debug Lua script with VSCode and [devCAT.lua-debug](https://marketplace.visualstudio.com/items?itemName=devCAT.lua-debug) (modified version)
 
 ### Scene
 * Generic QuadTree 

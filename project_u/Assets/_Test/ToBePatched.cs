@@ -21,41 +21,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-using lua.hotpatch;
+using hotpatch;
 
 public class ToBePatched
 {
-	[LuaHotPatch]
+	[HotPatch]
 	public static void PatchMe()
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchOutParam_Boolean(out bool a)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchOutParam_Int(out int a)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchOutParam_Float(out float a)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchOutParam_Decimal(out decimal a)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchRefParam_Double(ref double a)
 	{
 		throw new System.Exception("not patched");
@@ -66,7 +66,7 @@ public class ToBePatched
 		public string str;
 		public double value;
 	}
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchRefParam_Struct(ref StructToChange a)
 	{
 		throw new System.Exception("not patched");
@@ -77,13 +77,13 @@ public class ToBePatched
 		public string str;
 		public double value;
 	}
-	[LuaHotPatch]
+	[HotPatch]
 	public void PatchRefParam_Class(ref ClassToChange a)
 	{
 		throw new System.Exception("not patched");
 	}
 
-	[LuaHotPatch]
+	[HotPatch]
 	int InnerSubOrAdd(int a, int b)
 	{
 		return a + b;

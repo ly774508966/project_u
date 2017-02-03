@@ -29,7 +29,7 @@ namespace lua.hotpatch
 {
 	public class LuaHotPatchLoader
 	{
-		[LuaHotPatchHub]
+		[HotPatchHub]
 		public static bool Hub(
 			string signature,
 			MethodInfo method, 

@@ -32,11 +32,12 @@ namespace lua.hotpatch
 		[HotPatchHub]
 		public static bool Hub(
 			string signature,
-			MethodInfo method, 
+			MethodBase method_, 
 			object target,
 			out	object retval, 
 			params object[] args)
 		{
+			var method = (MethodInfo)method_;
 			try
 			{
 				if (find != null)

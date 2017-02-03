@@ -36,7 +36,7 @@ namespace lua.hotpatch
 		[MenuItem("Lua/Active Hot Patch (Mod Test)", priority = 100)]
 		static void ActiveHotPatchModeTest()
 		{
-			global::hotpatch.HotPatchEditor.Log = Debug.Log;
+			global::hotpatch.HotPatchEditor.Log = (msg) => Debug.Log(msg);
 
 			var csharp_dll = Assembly.Load("Assembly-CSharp").Location;
 			var csharp_firstpass_dll = Assembly.Load("Assembly-CSharp-firstpass").Location;
@@ -48,12 +48,12 @@ namespace lua.hotpatch
 		[MenuItem("Lua/Active Hot Patch", priority = 100)]
 		public static void ActiveHotPatch()
 		{
-			global::hotpatch.HotPatchEditor.Log = Debug.Log;
+			global::hotpatch.HotPatchEditor.Log = (msg) => Debug.Log(msg);
 
 			var csharp_dll = Assembly.Load("Assembly-CSharp").Location;
 			var csharp_firstpass_dll = Assembly.Load("Assembly-CSharp-firstpass").Location;
 			global::hotpatch.HotPatchEditor.Active(
-				new	[] { csharp_dll, csharp_firstpass_dll });
+				new	[] { csharp_dll, csharp_firstpass_dll }, processSymbols: true);
 
 			UnityEditorInternal.InternalEditorUtility.RequestScriptReload();
 		}

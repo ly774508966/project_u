@@ -23,6 +23,7 @@ SOFTWARE.
 */
 using System;
 using System.Reflection;
+using hotpatch;
 
 namespace lua.hotpatch
 {

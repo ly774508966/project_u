@@ -18,3 +18,6 @@
 	url = https://github.com/xiaobin83/VSCodeLuaDebug.git
 	branch = lua-5.3
 
+[submodule "tools/Stripper2.Chain"]
+	path = tools/Stripper2.Chain
+	url = https://github.com/xiaobin83/project_u_stripper2_chain

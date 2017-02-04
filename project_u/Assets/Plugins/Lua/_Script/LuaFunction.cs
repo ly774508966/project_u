@@ -21,7 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-using UnityEngine;
 using System;
 using AOT;
 
@@ -32,18 +31,14 @@ namespace lua
 		Lua L_;
 		int funcRef = Api.LUA_NOREF;
 
-		LuaFunction(Lua L, int index)
-		{
-			L_ = L;
-			funcRef = L.MakeRefAt(index);
-		}
-
 		public void Dispose()
 		{
 			if (L_.valid && funcRef != Api.LUA_NOREF)
 			{
 				L_.Unref(funcRef);
 			}
+			funcRef = Api.LUA_NOREF;
+			L_ = null;
 		}
 
 		internal Lua CheckValid()
@@ -57,7 +52,7 @@ namespace lua
 		{
 			var L = CheckValid();
 			Push();
-			var ret = new LuaFunction(L, -1);
+			var ret = new LuaFunction {L_ = L, funcRef = L.MakeRefAt(-1) };
 			Api.lua_pop(L, 1);
 			return ret;
 		}
@@ -136,15 +131,12 @@ namespace lua
 
 		public static LuaFunction MakeRefTo(Lua L, int idx)
 		{
-			Debug.Assert(Api.lua_isfunction(L, idx));
-			return new LuaFunction(L, idx);
+			L.Assert(Api.lua_isfunction(L, idx));
+			return new LuaFunction { L_ = L, funcRef = L.MakeRefAt(idx) };
 		}
 
-
-
-
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LuaDelegate(IntPtr L)
+		internal static int LuaDelegate(IntPtr L)
 		{
 			try
 			{

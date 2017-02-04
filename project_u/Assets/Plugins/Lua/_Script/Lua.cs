@@ -971,6 +971,10 @@ namespace lua
 
 				case Api.LUA_TFUNCTION:
 					return LuaFunction.MakeRefTo(this, idx);
+
+				case Api.LUA_TTHREAD:
+					return LuaThread.MakeRefTo(this, idx);
+
 				case Api.LUA_TUSERDATA:
 					return ObjectAt(idx);
 				default:
@@ -1054,6 +1058,10 @@ namespace lua
 			else if (type == typeof(LuaTable))
 			{
 				if (luaArgType == Api.LUA_TTABLE) return 10;
+			}
+			else if (type == typeof(LuaThread))
+			{
+				if (luaArgType == Api.LUA_TTHREAD) return 10;
 			}
 			else if (type == typeof(byte[]))
 			{
@@ -1226,9 +1234,18 @@ namespace lua
 					}
 					break;
 				case Api.LUA_TFUNCTION:
-					var f = LuaFunction.MakeRefTo(this, luaArgIdx);
-					isDisposable = true;
-					actualArgs.SetValue(f, idx);
+					{
+						var f = LuaFunction.MakeRefTo(this, luaArgIdx);
+						isDisposable = true;
+						actualArgs.SetValue(f, idx);
+					}
+					break;
+				case Api.LUA_TTHREAD:
+					{
+						var t = LuaThread.MakeRefTo(this, luaArgIdx);
+						isDisposable = true;
+						actualArgs.SetValue(t, idx);
+					}
 					break;
 				case Api.LUA_TUSERDATA:
 					actualArgs.SetValue(ObjectAt(luaArgIdx), idx);
@@ -1889,6 +1906,11 @@ namespace lua
 			{
 				var t = (LuaTable)value;
 				t.Push();
+			}
+			else if (type == typeof(LuaThread))
+			{
+				var th = (LuaThread)value;
+				th.Push();
 			}
 			else if (typeof(System.Delegate).IsAssignableFrom(type))
 			{

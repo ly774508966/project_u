@@ -64,8 +64,8 @@ namespace lua
 		{
 			Lua host = Lua.CheckHost(L);
 
-			var typeObj = host.ObjectAt(1);
-			host.Assert((typeObj != null && (typeObj is System.Type)), "Constructor needs type object.");
+			var typeObj = Lua.ObjectAtInternal(L, 1);
+			Lua.Assert((typeObj != null && (typeObj is System.Type)), "Constructor needs type object.");
 
 			var numArgs = Api.lua_gettop(L);
 			int[] luaArgTypes = Lua.luaArgTypes_NoArgs;
@@ -131,8 +131,8 @@ namespace lua
 			var ctor = (System.Reflection.ConstructorInfo)method;
 
 			IDisposable[] disposableArgs;
-			var args = host.ArgsFrom(parameters, 2, luaArgTypes.Length, out disposableArgs);
-			host.PushObject(ctor.Invoke(args));
+			var args = Lua.ArgsFrom(L, parameters, 2, luaArgTypes.Length, out disposableArgs);
+			Lua.PushObjectInternal(L, ctor.Invoke(args));
 			if (disposableArgs != null)
 			{
 				foreach (var d in disposableArgs)
@@ -176,7 +176,7 @@ namespace lua
 				typeObject = thisObject.GetType();
 			}
 
-			host.Assert(typeObject != null, "Should have a type");
+			Lua.Assert(typeObject != null, "Should have a type");
 
 			if (Api.lua_isinteger(L, 2))
 			{
@@ -234,7 +234,7 @@ namespace lua
 				typeObject = thisObject.GetType();
 			}
 
-			host.Assert(typeObject != null, "Should has a type.");
+			Lua.Assert(typeObject != null, "Should has a type.");
 
 			if (Api.lua_isnumber(L, 2))
 			{
@@ -286,8 +286,7 @@ namespace lua
 
 		static int MetaToStringFunctionInternal(lua_State L)
 		{
-			var host = Lua.CheckHost(L);
-			var thisObject = host.ValueAt(1);
+			var thisObject = Lua.ValueAtInternal(L, 1);
 			Api.lua_pushstring(L, thisObject.ToString());
 			return 1;
 		}
@@ -330,14 +329,13 @@ namespace lua
 
 		static int MetaBinaryOpFunctionInternal(lua_State L)
 		{
-			var host = Lua.CheckHost(L);
 			var opValue = Api.lua_tointeger(L, Api.lua_upvalueindex(1));
 			var op = (Lua.BinaryOp)opValue;
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
 			if (objectArg == IntPtr.Zero)
 			{
 				objectArg = Api.luaL_testudata(L, 2, Lua.objectMetaTable);
-				host.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
+				Lua.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
 			}
 			var obj = Lua.UdataToObject(objectArg);
 			var type = obj.GetType();
@@ -346,13 +344,12 @@ namespace lua
 			// upvalue 2 --> userdata (host of metatable).
 			// upvalue 3 --> member name
 			Api.lua_pushboolean(L, true);
-			host.PushObject(type);
+			Lua.PushObjectInternal(L, type);
 			Api.lua_pushstring(L, op.ToString());
 			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
 			Api.lua_pushvalue(L, 1);
 			Api.lua_pushvalue(L, 2);
-			host.Call(2, 1);
-
+			Lua.CallInternal(L, 2, 1);
 			return 1;
 		}
 
@@ -372,10 +369,9 @@ namespace lua
 
 		static int MetaUnaryOpFunctionInternal(lua_State L)
 		{
-			var host = Lua.CheckHost(L);
 			var op = (Lua.UnaryOp)Api.lua_tointeger(L, Api.lua_upvalueindex(1));
 			var objectArg = Api.luaL_testudata(L, 1, Lua.objectMetaTable); // test first one
-			host.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
+			Lua.Assert(objectArg != IntPtr.Zero, string.Format("Binary op {0} called on unexpected values.", op));
 			var obj = Lua.UdataToObject(objectArg);
 			var type = obj.GetType();
 
@@ -383,11 +379,11 @@ namespace lua
 			// upvalue 2 --> userdata (host of metatable).
 			// upvalue 3 --> member name
 			Api.lua_pushboolean(L, true);
-			host.PushObject(type);
+			Lua.PushObjectInternal(L, type);
 			Api.lua_pushstring(L, op.ToString());
 			Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
 			Api.lua_pushvalue(L, 1);
-			host.Call(1, 1);
+			Lua.CallInternal(L, 1, 1);
 			return 1;
 		}
 	}

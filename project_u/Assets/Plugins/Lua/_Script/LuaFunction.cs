@@ -57,10 +57,15 @@ namespace lua
 			return ret;
 		}
 
-		internal void Push()
+		public void Push()
 		{
 			var L = CheckValid();
 			L.PushRef(funcRef);
+		}
+
+		internal void Push(IntPtr L)
+		{
+			Lua.PushRefInternal(L, funcRef);
 		}
 
 		public void Invoke(LuaTable target = null, params object[] args)
@@ -131,7 +136,7 @@ namespace lua
 
 		public static LuaFunction MakeRefTo(Lua L, int idx)
 		{
-			L.Assert(Api.lua_isfunction(L, idx));
+			Lua.Assert(Api.lua_isfunction(L, idx));
 			return new LuaFunction { L_ = L, funcRef = L.MakeRefAt(idx) };
 		}
 

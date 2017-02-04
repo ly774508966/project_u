@@ -31,6 +31,14 @@ namespace lua
 		int threadRef = Api.LUA_NOREF;
 		int currentRef = Api.LUA_NOREF;
 
+		public bool hasYields
+		{
+			get
+			{
+				return currentRef != Api.LUA_NOREF;
+			}
+		}
+
 		LuaTable current_;
 		public LuaTable current
 		{
@@ -103,9 +111,8 @@ namespace lua
 			{
 				for (int i = 0; i < args.Length; ++i)
 				{
-					L.PushValue(args[i]);
+					Lua.PushValueInternal(thread, args[i]);
 				}
-				Api.lua_xmove(L, thread, args.Length);
 				nargs = args.Length;
 			}
 			var status = Api.lua_resume(thread, L, nargs);
@@ -114,14 +121,14 @@ namespace lua
 				var nrets = Api.lua_gettop(thread);
 				if (nrets > 0)
 				{
-					Api.lua_xmove(thread, L, nrets);
-					Api.lua_createtable(L, nrets, 0);
-					for (int i = 0; i < nrets; ++i)
+					Api.lua_createtable(thread, nrets, 0);
+					for (int i = 1; i <= nrets; ++i)
 					{
-						Api.lua_pushvalue(L, top + i + 1);
-						Api.lua_seti(L, -2, i + 1);
+						Api.lua_pushvalue(thread, i);
+						Api.lua_seti(L, -2, i);
 					}
-					currentRef = L.MakeRefAt(-1);
+					currentRef = Api.luaL_ref(thread, Api.LUA_REGISTRYINDEX); 
+					Api.lua_pop(thread, nrets + 1); // pop rets and table
 				}
 				Api.lua_settop(L, top - 1);
 				if (status == Api.LUA_OK) // coroutine ends
@@ -163,11 +170,16 @@ namespace lua
 		}
 
 
-		internal void Push()
+		public void Push()
 		{
 			var L = CheckValid();
 			L.PushRef(threadRef);
 		}
+		internal void Push(IntPtr L)
+		{
+			Lua.PushRefInternal(L, threadRef);
+		}
+
 
 		public static LuaThread Create(LuaFunction func)
 		{
@@ -189,7 +201,7 @@ namespace lua
 
 		public static LuaThread MakeRefTo(Lua L, int idx)
 		{
-			L.Assert(Api.lua_isthread(L, idx));
+			Lua.Assert(Api.lua_isthread(L, idx));
 			var threadRef = L.MakeRefAt(idx);
 			return new LuaThread { L_ = L, threadRef = threadRef };
 		}

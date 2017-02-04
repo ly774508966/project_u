@@ -93,6 +93,12 @@ namespace lua
 			L.PushRef(tableRef);
 		}
 
+		internal void Push(IntPtr L)
+		{
+			Lua.PushRefInternal(L, tableRef);
+		}
+
+
 		public int Length
 		{
 			get
@@ -252,7 +258,7 @@ namespace lua
 
 		internal static LuaTable MakeRefTo(Lua L, int idx)
 		{
-			L.Assert(Api.lua_istable(L, idx));
+			Lua.Assert(Api.lua_istable(L, idx));
 			return new LuaTable(L, idx);
 		}
 

@@ -93,16 +93,15 @@ namespace lua
 
 			var L = CheckValid();
 			Push();
-			var top = Api.lua_gettop(L);
 			var thread = Api.lua_tothread(L, -1);
+			Api.lua_pop(L, 1); // pop thread
+
 			if (!Api.lua_checkstack(thread, args != null ? args.Length : 0))
 			{
-				Api.lua_settop(L, top - 1);
 				throw new LuaException("too many arguments to resume");
 			}
 			if (Api.lua_status(thread) == Api.LUA_OK && Api.lua_gettop(thread) == 0)
 			{
-				Api.lua_settop(L, top - 1);
 				throw new LuaException("attempt to resume dead coroutine");
 			}
 
@@ -119,18 +118,22 @@ namespace lua
 			if (status == Api.LUA_OK || status == Api.LUA_YIELD)
 			{
 				var nrets = Api.lua_gettop(thread);
+				if (!Api.lua_checkstack(thread, nrets + 1))
+				{
+					Api.lua_pop(thread, nrets);
+					throw new LuaException("too many arguments to resume");
+				}
 				if (nrets > 0)
 				{
 					Api.lua_createtable(thread, nrets, 0);
 					for (int i = 1; i <= nrets; ++i)
 					{
 						Api.lua_pushvalue(thread, i);
-						Api.lua_seti(L, -2, i);
+						Api.lua_seti(thread, -2, i);
 					}
 					currentRef = Api.luaL_ref(thread, Api.LUA_REGISTRYINDEX); 
-					Api.lua_pop(thread, nrets + 1); // pop rets and table
+					Api.lua_pop(thread, nrets); // pop rets
 				}
-				Api.lua_settop(L, top - 1);
 				if (status == Api.LUA_OK) // coroutine ends
 				{
 					return false;
@@ -139,9 +142,8 @@ namespace lua
 			}
 			else
 			{
-				Api.lua_xmove(thread, L, 1);
-				var errorMessage = Api.lua_tostring(L, -1);
-				Api.lua_settop(L, top - 1);
+				var errorMessage = Api.lua_tostring(thread, -1);
+				Api.lua_pop(thread, 1); // pop error message
 				throw new LuaException(errorMessage, status);
 			}
 		}
@@ -185,10 +187,9 @@ namespace lua
 		{
 			var L = func.CheckValid();
 			var NL = Api.lua_newthread(L);
-			func.Push();
-			Api.lua_xmove(L, NL, 1);
+			func.Push(NL);
 			var threadRef = L.MakeRefAt(-1);
-			Api.lua_pop(L, 1);
+			Api.lua_pop(L, 1); // pop newthread
 			return new LuaThread { L_ = L, threadRef = threadRef };
 		}
 

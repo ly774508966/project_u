@@ -485,10 +485,9 @@ namespace lua
 			var scriptName = Api.lua_tostring(L, 1);
 			try
 			{
-				var host = CheckHost(L);
 				string scriptPath = string.Empty;
 				LoadChunkFromFile(L, scriptName, out scriptPath);
-				host.PushValue(scriptPath);
+				PushValueInternal(L, scriptPath);
 				return 2;
 			}
 			catch (Exception e)
@@ -834,8 +833,9 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int Panic(IntPtr L)
 		{
-			Api.luaL_traceback(L, L, Api.lua_tostring(L, -1), 1);
-			Config.LogError(string.Format("LUA FATAL: {0}", Api.lua_tostring(L, -1)));
+			var host = CheckHost(L);
+			Api.luaL_traceback(host, L, Api.lua_tostring(L, -1), 1);
+			Config.LogError(string.Format("LUA FATAL: {0}", Api.lua_tostring(host, -1)));
 			return 0;
 		}
 
@@ -895,20 +895,28 @@ namespace lua
 			return handleToObj.Target;
 		}
 
-
 		public int MakeRefTo(object obj)
 		{
-			Debug.Assert(obj != null);
+			return MakeRefToInternal(L, obj);
+		}
+
+		internal static int MakeRefToInternal(IntPtr L, object obj)
+		{
+			Assert(obj != null);
 			var type = obj.GetType();
-			Debug.Assert(type.IsClass);
-			PushObject(obj);
-			var refVal = MakeRefAt(-1);
+			Assert(type.IsClass);
+			PushObjectInternal(L, obj);
+			var refVal = MakeRefAtInternal(L, -1);
 			Api.lua_pop(L, 1);
 			return refVal;
 		}
 
-
 		public int MakeRefAt(int index)
+		{
+			return MakeRefAtInternal(L, index);
+		}
+
+		internal static int MakeRefAtInternal(IntPtr L, int index)
 		{
 			Api.lua_pushvalue(L, index);
 			var refVal = Api.luaL_ref(L, Api.LUA_REGISTRYINDEX);
@@ -926,6 +934,11 @@ namespace lua
 		}
 
 		public void Unref(int objReference)
+		{
+			UnrefInternal(L, objReference);
+		}
+
+		internal static void UnrefInternal(IntPtr L, int objReference)
 		{
 			Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, objReference);
 		}
@@ -1134,8 +1147,7 @@ namespace lua
 				if (luaArgType == Api.LUA_TUSERDATA)
 				{
 					// check into userdata
-					var host = CheckHost(L);
-					var obj = host.ObjectAt(argIdx);
+					var obj = ObjectAtInternal(L, argIdx);
 					if (obj != null)
 					{
 						var objType = obj.GetType();
@@ -1531,8 +1543,6 @@ namespace lua
 		internal static void CacheMethod(IntPtr L, Type targetType, string mangledName, System.Reflection.MethodBase method)
 		{
 			if (!useMethodCache) return;
-			var host = CheckHost(L);
-
 			lock (methodCache)
 			{
 				Dictionary<string, System.Reflection.MethodBase> cachedMethods;
@@ -1558,7 +1568,7 @@ namespace lua
 				var host = CheckHost(L);
 				if (host.pushError != null) // pushError may not be prepared, 
 				{
-					host.pushError.Push();  // DO NOT use Invoke, or you have infinite recursive call
+					host.pushError.Push(L);  // DO NOT use Invoke, or you have infinite recursive call
 					Api.lua_pushstring(L, message);
 					if (Api.LUA_OK != Api.lua_pcall(L, 1, 1, 0))
 					{
@@ -1587,7 +1597,7 @@ namespace lua
 				if (host.checkError != null) // huh, in Lua.Ctor, checkError may no be prepared
 				{
 					Api.lua_pushvalue(L, idx);
-					host.checkError.Push(); // dont use Invoke. host.Call inside of it results an infinite recursive call.
+					host.checkError.Push(L); // dont use Invoke. host.Call inside of it results an infinite recursive call.
 					Api.lua_insert(L, -2);
 					if (Api.LUA_OK != Api.lua_pcall(L, 1, 0, 0)) // do not use host.Call, or you have infinite recursive call.
 					{
@@ -1667,10 +1677,8 @@ namespace lua
 			// upvalue 1 --> isInvokingFromClass
 			// upvalue 2 --> userdata (host of metatable).
 			// upvalue 3 --> member name
-			var host = CheckHost(L);
-
 			var isInvokingFromClass = Api.lua_toboolean(L, Api.lua_upvalueindex(1));
-			var obj = host.ObjectAt(Api.lua_upvalueindex(2));
+			var obj = ObjectAtInternal(L, Api.lua_upvalueindex(2));
 			Assert(obj != null, "invoking target not found at upvalueindex(2)");
 			string methodName;
 			if (!Api.luaL_teststring_strict(L, Api.lua_upvalueindex(3), out methodName))
@@ -1728,7 +1736,7 @@ namespace lua
 				type = obj.GetType();
 			}
 
-			var mangledName = host.Mangle(methodName, luaArgTypes, invokingStaticMethod, argStart);
+			var mangledName = CheckHost(L).Mangle(methodName, luaArgTypes, invokingStaticMethod, argStart);
 			var method = GetMethodFromCache(type, mangledName);
 			System.Reflection.ParameterInfo[] parameters = null;
 
@@ -1809,7 +1817,7 @@ namespace lua
 			int outValues = 0;
 			if (retVal != null)
 			{
-				host.PushValue(retVal);
+				PushValueInternal(L, retVal);
 				++outValues;
 			}
 			// out and ref parameters
@@ -1817,7 +1825,7 @@ namespace lua
 			{
 				if (parameters[i].IsOut || parameters[i].ParameterType.IsByRef)
 				{
-					host.PushValue(actualArgs[i]);
+					PushValueInternal(L, actualArgs[i]);
 					++outValues;
 				}
 			}
@@ -2002,17 +2010,17 @@ namespace lua
 			else if (type == typeof(LuaFunction))
 			{
 				var f = (LuaFunction)value;
-				f.Push();
+				f.Push(L);
 			}
 			else if (type == typeof(LuaTable))
 			{
 				var t = (LuaTable)value;
-				t.Push();
+				t.Push(L);
 			}
 			else if (type == typeof(LuaThread))
 			{
 				var th = (LuaThread)value;
-				th.Push();
+				th.Push(L);
 			}
 			else if (typeof(System.Delegate).IsAssignableFrom(type))
 			{
@@ -2027,7 +2035,7 @@ namespace lua
 			}
 		}
 
-		internal int GetMember(object obj, Type objType, string memberName)
+		internal static int GetMember(IntPtr L, object obj, Type objType, string memberName)
 		{
 			var members = objType.GetMember(memberName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
 			if (members.Length > 0)
@@ -2036,7 +2044,7 @@ namespace lua
 				if (member.MemberType == System.Reflection.MemberTypes.Field)
 				{
 					var field = (System.Reflection.FieldInfo)member;
-					PushValue(field.GetValue(obj));
+					PushValueInternal(L, field.GetValue(obj));
 					return 1;
 				}
 				else if (member.MemberType == System.Reflection.MemberTypes.Property)
@@ -2044,14 +2052,14 @@ namespace lua
 					var prop = (System.Reflection.PropertyInfo)member;
 					try
 					{
-						PushValue(prop.GetValue(obj, null));
+						PushValueInternal(L, prop.GetValue(obj, null));
 						return 1;
 					}
 					catch (ArgumentException ae)
 					{
 						// search into base	class of obj
 						Assert(objType != typeof(object), string.Format("Member {0} not found. {1}", memberName, ae.Message));
-						return GetMember(obj, objType.BaseType, memberName);
+						return GetMember(L, obj, objType.BaseType, memberName);
 					}
 				}
 				else if (member.MemberType == System.Reflection.MemberTypes.Method)
@@ -2071,40 +2079,40 @@ namespace lua
 			{
 				// search into base	class of obj
 				Assert(objType != typeof(object), string.Format("Member {0} not found.", memberName));
-				return GetMember(obj, objType.BaseType, memberName);
+				return GetMember(L, obj, objType.BaseType, memberName);
 			}
 		}
 
-		internal int IndexObject(object obj, Type type, object[] index)
+		internal static int IndexObjectInternal(IntPtr L, object obj, Type type, object[] index)
 		{
 			Assert(index != null);
 			var prop = type.GetProperty("Item");
 			if (prop == null)
 			{
 				Assert(type != typeof(object), string.Format("No indexer found in {0}", obj.GetType()));
-				return IndexObject(obj, type.BaseType, index);
+				return IndexObjectInternal(L, obj, type.BaseType, index);
 			}
 			try
 			{
 				var value = prop.GetValue(obj, index);
-				PushValue(value);
+				PushValueInternal(L, value);
 				return 1;
 			}
 			catch (ArgumentException ae)
 			{
 				Assert(type != typeof(object), string.Format("Incorrect indexer called in {0}: {1}", obj.GetType(), ae.Message));
-				return IndexObject(obj, type.BaseType, index);
+				return IndexObjectInternal(L, obj, type.BaseType, index);
 			}
 		}
 
-		internal void SetValueAtIndexOfObject(object obj, Type type, object[] index, object value)
+		internal static void SetValueAtIndexOfObject(IntPtr L, object obj, Type type, object[] index, object value)
 		{
 			Assert(index != null);
 			var prop = type.GetProperty("Item");
 			if (prop == null)
 			{
 				Assert(type != typeof(object), string.Format("No indexer found in {0}", obj.GetType()));
-				SetValueAtIndexOfObject(obj, type.BaseType, index, value);
+				SetValueAtIndexOfObject(L, obj, type.BaseType, index, value);
 			}
 			try
 			{
@@ -2123,7 +2131,7 @@ namespace lua
 			catch (ArgumentException ae)
 			{
 				Assert(type != typeof(object), string.Format("Incorrect indexer called in {0}: {1}", obj.GetType(), ae.Message));
-				SetValueAtIndexOfObject(obj, type.BaseType, index, value);
+				SetValueAtIndexOfObject(L, obj, type.BaseType, index, value);
 			}
 		}
 
@@ -2193,7 +2201,7 @@ namespace lua
 			return false;
 		}
 
-		internal void SetMember(object thisObject, Type type, string memberName, object value)
+		internal static void SetMember(IntPtr L, object thisObject, Type type, string memberName, object value)
 		{
 			Assert(type.IsClass || type.IsAnsiClass, string.Format("Setting property {0} of {1} object", memberName, type.ToString()));
 
@@ -2342,10 +2350,11 @@ namespace lua
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int HandleLuaFunctionInvokingError(IntPtr L)
 		{
+			var host = CheckHost(L);
 			var err = Api.lua_tostring(L, 1);
-			Api.luaL_traceback(L, L, err, 0);
-			err = Api.lua_tostring(L, -1);
-			Api.lua_pop(L, 1);
+			Api.luaL_traceback(host, L, err, 0);
+			err = Api.lua_tostring(host, -1);
+			Api.lua_pop(host, 1);
 			PushErrorObject(L, err);
 			return 1;
 		}

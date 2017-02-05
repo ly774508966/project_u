@@ -62,8 +62,6 @@ namespace lua
 		}
 		static int MetaConstructFunctionInternal(lua_State L)
 		{
-			Lua host = Lua.CheckHost(L);
-
 			var typeObj = Lua.ObjectAtInternal(L, 1);
 			Lua.Assert((typeObj != null && (typeObj is System.Type)), "Constructor needs type object.");
 
@@ -79,7 +77,7 @@ namespace lua
 			}
 
 			var type = (System.Type)typeObj;
-			var mangledName = host.Mangle("__ctor", luaArgTypes, invokingStaticMethod: true, argStart: 2);
+			var mangledName = Lua.CheckHost(L).Mangle("__ctor", luaArgTypes, invokingStaticMethod: true, argStart: 2);
 			var method = Lua.GetMethodFromCache(type, mangledName);
 			System.Reflection.ParameterInfo[] parameters = null;
 			if (method == null)
@@ -159,20 +157,18 @@ namespace lua
 
 		static int MetaIndexFunctionInternal(lua_State L)
 		{
-			var host = Lua.CheckHost(L);
-
 			var isIndexingClassObject = IsIndexingClassObject(L);
 
 			System.Type typeObject = null;
 			if (isIndexingClassObject)
 			{
-				typeObject = (System.Type)host.ObjectAt(1);
+				typeObject = (System.Type)Lua.ObjectAtInternal(L, 1);
 			}
 
 			object thisObject = null;
 			if (!isIndexingClassObject)
 			{
-				thisObject = host.ObjectAt(1);
+				thisObject = Lua.ObjectAtInternal(L, 1);
 				typeObject = thisObject.GetType();
 			}
 
@@ -183,21 +179,21 @@ namespace lua
 				if (typeObject != null && typeObject.IsArray)
 				{
 					var array = (System.Array)thisObject;
-					host.PushValue(array.GetValue((int)Api.lua_tointeger(L, 2)));
+					Lua.PushValueInternal(L, array.GetValue((int)Api.lua_tointeger(L, 2)));
 					return 1;
 				}
 				else
 				{
-					return host.IndexObject(thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) });
+					return Lua.IndexObjectInternal(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) });
 				}
 			}
 			else if (Api.lua_isstring(L, 2))
 			{
-				return host.GetMember(thisObject, typeObject, Api.lua_tostring(L, 2));
+				return Lua.GetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2));
 			}
 			else
 			{
-				return host.IndexObject(thisObject, typeObject, new object[] { host.ValueAt(2) });
+				return Lua.IndexObjectInternal(L, thisObject, typeObject, new object[] { Lua.ValueAtInternal(L, 2) });
 			}
 		}
 
@@ -217,20 +213,18 @@ namespace lua
 
 		static int MetaNewIndexFunctionInternal(lua_State L)
 		{
-			var host = Lua.CheckHost(L);
-
 			var isIndexingClassObject = IsIndexingClassObject(L);
 
 			System.Type typeObject = null;
 			if (isIndexingClassObject)
 			{
-				typeObject = (System.Type)host.ObjectAt(1);
+				typeObject = (System.Type)Lua.ObjectAtInternal(L, 1);
 			}
 
 			object thisObject = null;
 			if (!isIndexingClassObject)
 			{
-				thisObject = host.ObjectAt(1);
+				thisObject = Lua.ObjectAtInternal(L, 1);
 				typeObject = thisObject.GetType();
 			}
 
@@ -241,7 +235,7 @@ namespace lua
 				if (typeObject != null && typeObject.IsArray)
 				{
 					var array = (System.Array)thisObject;
-					var value = host.ValueAt(3);
+					var value = Lua.ValueAtInternal(L, 3);
 					var index = (int)Api.lua_tointeger(L, 2);
 					object convertedNumber;
 					if (Lua.ConvertNumber(typeObject.GetElementType(), value, out convertedNumber))
@@ -256,16 +250,16 @@ namespace lua
 				}
 				else
 				{
-					host.SetValueAtIndexOfObject(thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, host.ValueAt(3));
+					Lua.SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { (int)Api.lua_tointeger(L, 2) }, Lua.ValueAtInternal(L, 3));
 				}
 			}
 			else if (Api.lua_isstring(L, 2))
 			{
-				host.SetMember(thisObject, typeObject, Api.lua_tostring(L, 2), host.ValueAt(3));
+				Lua.SetMember(L, thisObject, typeObject, Api.lua_tostring(L, 2), Lua.ValueAtInternal(L, 3));
 			}
 			else
 			{
-				host.SetValueAtIndexOfObject(thisObject, typeObject, new object[] { host.ValueAt(2) }, host.ValueAt(3));
+				Lua.SetValueAtIndexOfObject(L, thisObject, typeObject, new object[] { Lua.ValueAtInternal(L, 2) }, Lua.ValueAtInternal(L, 3));
 			}
 			return 0;
 		}

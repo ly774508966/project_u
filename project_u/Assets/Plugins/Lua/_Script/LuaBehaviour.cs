@@ -353,7 +353,7 @@ namespace lua
 
 		IEnumerator LuaCoroutine(LuaThread thread)
 		{
-			if (thread.Resume())
+			while (thread.Resume())
 			{
 				if (thread.hasYields)
 				{

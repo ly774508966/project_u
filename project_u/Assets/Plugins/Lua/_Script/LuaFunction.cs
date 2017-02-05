@@ -156,30 +156,28 @@ namespace lua
 
 		static int LuaDelegateInternal(IntPtr L)
 		{
-			var host = Lua.CheckHost(L);
-			var func = (System.Delegate)host.ObjectAt(Api.lua_upvalueindex(1));
+			var func = (System.Delegate)Lua.ObjectAtInternal(L, Api.lua_upvalueindex(1));
 			var numArgs = Api.lua_gettop(L);
-
-			var refToDelegate = host.MakeRefTo(func);
+			var refToDelegate = Lua.MakeRefToInternal(L, func);
 			try
 			{
 
 				bool isInvokingFromClass = false;
 				Api.lua_pushboolean(L, isInvokingFromClass);      // upvalue 1 --> isInvokingFromClass
-				host.PushRef(refToDelegate);                      // upvalue 2 --> userdata, first parameter of __index
+				Lua.PushRefInternal(L, refToDelegate);            // upvalue 2 --> userdata, first parameter of __index
 				Api.lua_pushstring(L, "Invoke");                  // upvalue 3 --> member name
 				Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
-				host.PushRef(refToDelegate);
+				Lua.PushRefInternal(L, refToDelegate);
 				for (int i = 1; i <= numArgs; ++i)
 				{
 					Api.lua_pushvalue(L, i);
 				}
-				host.Call(numArgs + 1, 1);
-				host.Unref(refToDelegate);
+				Lua.CallInternal(L, numArgs + 1, 1);
+				Lua.UnrefInternal(L, refToDelegate);
 			}
 			catch (Exception e)
 			{
-				host.Unref(refToDelegate);
+				Lua.UnrefInternal(L, refToDelegate);
 				throw e;
 			}
 			return 1;

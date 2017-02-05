@@ -23,7 +23,6 @@ SOFTWARE.
 */
 ﻿using System.Collections.Generic;
 using System;
-using UnityEngine;
 
 namespace lua
 {
@@ -56,7 +55,7 @@ namespace lua
 
 		public void Dispose()
 		{
-			if (L_.valid && tableRef != Api.LUA_NOREF)
+			if (L_ != null && L_.valid && tableRef != Api.LUA_NOREF)
 			{
 				foreach (var c in cached)
 				{
@@ -65,10 +64,11 @@ namespace lua
 						c.Value.Dispose();
 					}
 				}
-				cached.Clear();
 				L_.Unref(tableRef);
-				L_ = null;
 			}
+			cached.Clear();
+			tableRef = Api.LUA_NOREF;
+			L_ = null;
 		}
 
 		Lua CheckValid()
@@ -92,6 +92,12 @@ namespace lua
 			var L = CheckValid();
 			L.PushRef(tableRef);
 		}
+
+		internal void Push(IntPtr L)
+		{
+			Lua.PushRefInternal(L, tableRef);
+		}
+
 
 		public int Length
 		{
@@ -243,7 +249,7 @@ namespace lua
 			}
 			else
 			{
-				Debug.LogErrorFormat("attempt to call a non-function '{0}' ", name);
+				Config.LogError(string.Format("attempt to call a non-function '{0}' ", name));
 			}
 			cached[name] = f;
 			Api.lua_settop(L, top);
@@ -252,7 +258,7 @@ namespace lua
 
 		internal static LuaTable MakeRefTo(Lua L, int idx)
 		{
-			Debug.Assert(Api.lua_istable(L, idx));
+			Lua.Assert(Api.lua_istable(L, idx));
 			return new LuaTable(L, idx);
 		}
 

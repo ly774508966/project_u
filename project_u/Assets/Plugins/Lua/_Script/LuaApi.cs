@@ -121,8 +121,13 @@ namespace lua
 		public static extern void lua_rotate(IntPtr L, int idx, int n);
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern void lua_copy(IntPtr L, int fromidx, int toidx);
-		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
-		public static extern int lua_checkstack(IntPtr L, int n);
+		[DllImport(LIBNAME, EntryPoint = "lua_checkstack", CallingConvention = CallingConvention.Cdecl)]
+		static extern int lua_checkstack_(IntPtr L, int n);
+		public static bool lua_checkstack(IntPtr L, int n)
+		{
+			return lua_checkstack_(L, n) != 0;
+		}
+
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern void lua_xmove(IntPtr from, IntPtr to, int n);
 
@@ -238,6 +243,10 @@ namespace lua
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern IntPtr lua_touserdata(IntPtr L, int idx);
+
+		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern IntPtr lua_tothread(IntPtr L, int idx);
+
 
 
 		public const int LUA_OPEQ = 0;
@@ -390,6 +399,13 @@ namespace lua
 		{
 			return lua_yieldk(L, (n), IntPtr.Zero, null);
 		}
+
+		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern int lua_resume(IntPtr L, IntPtr from, int narg);
+
+		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
+		public static extern int lua_status(IntPtr L);
+
 
 		[DllImport(LIBNAME, CallingConvention = CallingConvention.Cdecl)]
 		public static extern int lua_next(IntPtr L, int idx);

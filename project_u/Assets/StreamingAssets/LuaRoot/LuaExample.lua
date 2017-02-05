@@ -37,8 +37,8 @@ function LuaExample:Awake(instance)
 end
 
 function LuaExample:Update(instance)
-	UnityDebug.Log("LuaExample.Update")
-	--self:InnerFunc();
+	-- UnityDebug.Log("LuaExample.Update")
+	-- self:InnerFunc();
 	-- self:Test()
 	-- self.StaticTest()
 	-- self:TestWithParam("Hello World!")

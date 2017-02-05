@@ -21,7 +21,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-using UnityEngine;
 using System;
 using AOT;
 
@@ -32,18 +31,14 @@ namespace lua
 		Lua L_;
 		int funcRef = Api.LUA_NOREF;
 
-		LuaFunction(Lua L, int index)
-		{
-			L_ = L;
-			funcRef = L.MakeRefAt(index);
-		}
-
 		public void Dispose()
 		{
 			if (L_.valid && funcRef != Api.LUA_NOREF)
 			{
 				L_.Unref(funcRef);
 			}
+			funcRef = Api.LUA_NOREF;
+			L_ = null;
 		}
 
 		internal Lua CheckValid()
@@ -57,15 +52,20 @@ namespace lua
 		{
 			var L = CheckValid();
 			Push();
-			var ret = new LuaFunction(L, -1);
+			var ret = new LuaFunction {L_ = L, funcRef = L.MakeRefAt(-1) };
 			Api.lua_pop(L, 1);
 			return ret;
 		}
 
-		internal void Push()
+		public void Push()
 		{
 			var L = CheckValid();
 			L.PushRef(funcRef);
+		}
+
+		internal void Push(IntPtr L)
+		{
+			Lua.PushRefInternal(L, funcRef);
 		}
 
 		public void Invoke(LuaTable target = null, params object[] args)
@@ -136,15 +136,12 @@ namespace lua
 
 		public static LuaFunction MakeRefTo(Lua L, int idx)
 		{
-			Debug.Assert(Api.lua_isfunction(L, idx));
-			return new LuaFunction(L, idx);
+			Lua.Assert(Api.lua_isfunction(L, idx));
+			return new LuaFunction { L_ = L, funcRef = L.MakeRefAt(idx) };
 		}
 
-
-
-
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
-		public static int LuaDelegate(IntPtr L)
+		internal static int LuaDelegate(IntPtr L)
 		{
 			try
 			{
@@ -159,30 +156,28 @@ namespace lua
 
 		static int LuaDelegateInternal(IntPtr L)
 		{
-			var host = Lua.CheckHost(L);
-			var func = (System.Delegate)host.ObjectAt(Api.lua_upvalueindex(1));
+			var func = (System.Delegate)Lua.ObjectAtInternal(L, Api.lua_upvalueindex(1));
 			var numArgs = Api.lua_gettop(L);
-
-			var refToDelegate = host.MakeRefTo(func);
+			var refToDelegate = Lua.MakeRefToInternal(L, func);
 			try
 			{
 
 				bool isInvokingFromClass = false;
 				Api.lua_pushboolean(L, isInvokingFromClass);      // upvalue 1 --> isInvokingFromClass
-				host.PushRef(refToDelegate);                      // upvalue 2 --> userdata, first parameter of __index
+				Lua.PushRefInternal(L, refToDelegate);            // upvalue 2 --> userdata, first parameter of __index
 				Api.lua_pushstring(L, "Invoke");                  // upvalue 3 --> member name
 				Api.lua_pushcclosure(L, Lua.InvokeMethod, 3);
-				host.PushRef(refToDelegate);
+				Lua.PushRefInternal(L, refToDelegate);
 				for (int i = 1; i <= numArgs; ++i)
 				{
 					Api.lua_pushvalue(L, i);
 				}
-				host.Call(numArgs + 1, 1);
-				host.Unref(refToDelegate);
+				Lua.CallInternal(L, numArgs + 1, 1);
+				Lua.UnrefInternal(L, refToDelegate);
 			}
 			catch (Exception e)
 			{
-				host.Unref(refToDelegate);
+				Lua.UnrefInternal(L, refToDelegate);
 				throw e;
 			}
 			return 1;

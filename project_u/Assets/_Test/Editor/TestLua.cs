@@ -1559,7 +1559,112 @@ namespace lua.test
 			Api.lua_settop(L, top);
 		}
 
+		[Test]
+		public void TestLuaCoroutine()
+		{
+			var top = Api.lua_gettop(L);
+			var t = LuaThread.CreateAndDispose(
+				LuaFunction.NewFunction(
+					L,
+					"function()\n" + 
+					"  coroutine.yield(1)\n" + 
+					"  coroutine.yield(2)\n" + 
+					"  coroutine.yield(3)\n" + 
+					"  coroutine.yield(4)\n" + 
+					"  return 5\n" +
+					"end\n"));
+			Assert.AreEqual(top, Api.lua_gettop(L));
+			long i = 1;
+			while (t.Resume())
+			{
+				Assert.NotNull(t.current);
+				Assert.AreEqual(i, (long)t.current[1]);
+				++i;
+			}
+			Assert.AreEqual(5, i);
+			Assert.AreEqual(5, t.current[1]);
+			t.Dispose();
+			Assert.AreEqual(top, Api.lua_gettop(L));
+		}
 
+		[Test]
+		public void TestLuaCoroutine_ResumeWithArg()
+		{
+			var top = Api.lua_gettop(L);
+			var t = LuaThread.CreateAndDispose(
+				LuaFunction.NewFunction(
+					L,
+					"function()\n" + 
+					"  return coroutine.yield()\n" + 
+					"end\n"));
+			t.Resume(); // first yield
+			Assert.IsNull(t.current);
+			t.Resume(4, 5, "hello");
+			Assert.NotNull(t.current);
+			Assert.AreEqual(4, (long)t.current[1]);
+			Assert.AreEqual(5, (long)t.current[2]);
+			Assert.AreEqual("hello", (string)t.current[3]);
+			t.Dispose();
+			Assert.AreEqual(top, Api.lua_gettop(L));
+		}
 
+		[Test]
+		[ExpectedException(typeof(LuaException))]
+		public void TestLuaCoroutine_ResumeDeadCoroutine()
+		{
+			var top = Api.lua_gettop(L);
+			var t = LuaThread.CreateAndDispose(
+				LuaFunction.NewFunction(
+					L,
+					"function()\n" + 
+					"  return coroutine.yield()\n" + 
+					"end\n"));
+			t.Resume(); // first yield
+			Assert.IsNull(t.current);
+			t.Resume(4, 5, "hello");
+			Assert.NotNull(t.current);
+			Assert.AreEqual(4, (long)t.current[1]);
+			Assert.AreEqual(5, (long)t.current[2]);
+			Assert.AreEqual("hello", (string)t.current[3]);
+
+			try
+			{
+				t.Resume();
+			}
+			catch (LuaException e)
+			{
+				Assert.True(e.Message.Contains("dead coroutine"));
+				Assert.AreEqual(top, Api.lua_gettop(L));
+				t.Dispose();
+				throw e;
+			}
+		}
+
+		LuaThread ResumeCoroutine(LuaThread t)
+		{
+			t.Resume(10);
+			return t.Retain(); // this function is called from lua, so t will be disposed. Retain it before return
+		}
+
+		[Test]
+		public void TestLuaCoroutine_CoroutineAsParameterFromLua()
+		{
+			var f = LuaFunction.CreateDelegate(L, new System.Func<LuaThread, LuaThread>(ResumeCoroutine));
+			L.SetGlobal("my_resume", f);
+			f.Dispose();
+			f = LuaFunction.NewFunction(
+				L, 
+				"function()\n" +
+				"  local c = coroutine.create(\n" +
+				"    function(k0)\n" + 
+				"      local k1 = coroutine.yield('hello')\n" +
+				"      return 5 + k0 + k1\n" +
+				"    end)\n" + 
+				"  return my_resume(c)\n" +
+				"end");
+			var th = (LuaThread)f.Invoke1();
+			th.Resume(20);
+			Assert.AreEqual(35, (long)th.current[1]);
+		}
 	}
 }

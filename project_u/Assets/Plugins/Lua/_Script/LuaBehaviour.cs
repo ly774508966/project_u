@@ -23,7 +23,7 @@ SOFTWARE.
 */
 using UnityEngine;
 using System;
-using System.Collections.Generic;
+using System.Collections;
 
 namespace lua
 {
@@ -350,6 +350,30 @@ namespace lua
 			}
 			Api.lua_pop(L, 1); // pop behaviour table
 		}
+
+		IEnumerator LuaCoroutine(LuaThread thread)
+		{
+			while (thread.Resume())
+			{
+				if (thread.hasYields)
+				{
+					var stuff = thread.current[1];
+					if (stuff is YieldInstruction
+						|| stuff is CustomYieldInstruction)
+					{
+						yield return stuff;
+					}
+				}
+				yield return null;
+			}
+			thread.Dispose();
+		}
+
+		public void StartLuaCoroutine(LuaThread thread)
+		{
+			StartCoroutine(LuaCoroutine(thread.Retain()));
+		}
+
 
 		public void SendLuaMessage(Message message)
 		{

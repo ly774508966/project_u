@@ -357,12 +357,7 @@ namespace lua
 			{
 				if (thread.hasYields)
 				{
-					var stuff = thread.current[1];
-					if (stuff is YieldInstruction
-						|| stuff is CustomYieldInstruction)
-					{
-						yield return stuff;
-					}
+					yield return thread.current[1];
 				}
 				yield return null;
 			}

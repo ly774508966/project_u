@@ -31,6 +31,51 @@ namespace lua
 		Lua L_;
 		int funcRef = Api.LUA_NOREF;
 
+		public static implicit operator System.Action(LuaFunction f)
+		{
+			return ToAction(f);
+		}
+
+		public static System.Action ToAction(LuaFunction f)
+		{
+			f = f.Retain();
+			System.Action action = () => {
+				f.Invoke();
+				f.Dispose();
+			};
+			return action;
+		}
+
+		public static System.Action<T> ToAction<T>(LuaFunction f)
+		{
+			f = f.Retain();
+			System.Action<T> action = (arg) => {
+				f.Invoke(null, arg);
+				f.Dispose();
+			};
+			return action;
+		}
+
+		public static System.Action<T1, T2> ToAction<T1, T2>(LuaFunction f)
+		{
+			f = f.Retain();
+			System.Action<T1, T2> action = (arg1, arg2) => {
+				f.Invoke(null, arg1, arg2);
+				f.Dispose();
+			};
+			return action;
+		}
+
+		public static System.Action<T1, T2, T3> ToAction<T1, T2, T3>(LuaFunction f)
+		{
+			f = f.Retain();
+			System.Action<T1, T2, T3> action = (arg1, arg2, arg3) => {
+				f.Invoke(null, arg1, arg2, arg3);
+				f.Dispose();
+			};
+			return action;
+		}
+
 		public void Dispose()
 		{
 			if (L_.valid && funcRef != Api.LUA_NOREF)
@@ -68,19 +113,34 @@ namespace lua
 			Lua.PushRefInternal(L, funcRef);
 		}
 
-		public void Invoke(LuaTable target = null, params object[] args)
+		public void Invoke(LuaTable target, params object[] args)
 		{
 			InvokeInternal(target, 0, args);
 		}
 
-		public object Invoke1(LuaTable target = null, params object[] args)
+		public void Invoke(params object[] args)
+		{
+			Invoke(null, args);
+		}
+
+		public object Invoke1(LuaTable target, params object[] args)
 		{
 			return InvokeInternal(target, 1, args);
 		}
 
-		public LuaTable InvokeMultiRet(LuaTable target = null, params object[] args)
+		public object Invoke1(params object[] args)
+		{
+			return Invoke1(null, args);
+		}
+
+		public LuaTable InvokeMultiRet(LuaTable target, params object[] args)
 		{
 			return (LuaTable)InvokeInternal(target, Api.LUA_MULTRET, args);
+		}
+
+		public LuaTable InvokeMultiRet(params object[] args)
+		{
+			return InvokeMultiRet(null, args);
 		}
 
 		object InvokeInternal(LuaTable target, int nrets, params object[] args)

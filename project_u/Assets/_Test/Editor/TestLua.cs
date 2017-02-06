@@ -1669,7 +1669,12 @@ namespace lua.test
 
 		class K
 		{
-			public string Foo(string p0, string p1 = "_abcd", params string[] ps)
+			public string Foo(string p0, params string[] ps)
+			{
+				return Foo(p0, "_abcd", ps);
+			}
+
+			public string Foo(string p0, string p1, params string[] ps)
 			{
 				var sb = new System.Text.StringBuilder();
 				sb.Append(p0);
@@ -1679,6 +1684,11 @@ namespace lua.test
 					sb.Append(p);
 				}
 				return sb.ToString();
+			}
+
+			public void Bar(System.Action action)
+			{
+				action();
 			}
 		}
 
@@ -1720,9 +1730,37 @@ namespace lua.test
 				"function(t) return t:Foo('a', 'b', 'kkk', 'ggg') end"))
 			{
 				var inst = new K();
-				var ret = (string)f.Invoke1(null, inst);
+				var ret = (string)f.Invoke1(inst);
 				Assert.AreEqual("abkkkggg", ret);
 			}
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction()
+		{
+			var f = LuaFunction.NewFunction(L, "function() _G['test1234'] = 20 end");
+			var action = (System.Action)f;
+			action();
+			f.Dispose();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tointeger(L, -1);
+			Api.lua_pop(L, 1);
+
+			Assert.AreEqual(20, ret);
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction2()
+		{
+			var f = LuaFunction.NewFunction(L, "function(k) k:Bar(function() _G['test1234'] = 80 end) end");
+			f.Invoke(new K());
+			f.Dispose();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tointeger(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual(80, ret);
 		}
 	}
 }

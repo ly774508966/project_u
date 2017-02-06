@@ -1122,7 +1122,7 @@ namespace lua
 				if (luaArgType == Api.LUA_TBOOLEAN) return 10;
 				return 5;
 			}
-			else if (type == typeof(LuaFunction))
+			else if (type == typeof(LuaFunction) || type == typeof(System.Action))
 			{
 				if (luaArgType == Api.LUA_TFUNCTION) return 10;
 			}
@@ -1326,7 +1326,7 @@ namespace lua
 				case Api.LUA_TFUNCTION:
 					{
 						var host = CheckHost(L);
-						object t = null;
+						LuaFunction t = null;
 						if (host == L)
 						{
 							t = LuaFunction.MakeRefTo(host, luaArgIdx);
@@ -1338,8 +1338,16 @@ namespace lua
 							t = LuaFunction.MakeRefTo(host, -1);
 							Api.lua_pop(L, 1);
 						}
-						isDisposable = true;
-						actualArgs.SetValue(t, idx);
+                        if (type == typeof(System.Action)) // TODO: check generic parameter type
+						{
+							actualArgs.SetValue((System.Action)t, idx);
+							t.Dispose(); // unused anymore
+						}
+						else
+						{
+							isDisposable = true;
+							actualArgs.SetValue(t, idx);
+						}
 					}
 					break;
 				case Api.LUA_TTHREAD:

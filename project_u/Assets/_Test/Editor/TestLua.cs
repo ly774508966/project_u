@@ -1666,5 +1666,63 @@ namespace lua.test
 			th.Resume(20);
 			Assert.AreEqual(35, (long)th.current[1]);
 		}
+
+		class K
+		{
+			public string Foo(string p0, string p1 = "_abcd", params string[] ps)
+			{
+				var sb = new System.Text.StringBuilder();
+				sb.Append(p0);
+				sb.Append(p1);
+				foreach (var p in ps)
+				{
+					sb.Append(p);
+				}
+				return sb.ToString();
+			}
+		}
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(null, inst);
+				Assert.AreEqual("a_abcd", ret);
+			}
+		}
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter2()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a', 'b') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(null, inst);
+				Assert.AreEqual("ab", ret);
+			}
+		}
+
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter_WithVariadicParams()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a', 'b', 'kkk', 'ggg') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(null, inst);
+				Assert.AreEqual("abkkkggg", ret);
+			}
+		}
 	}
 }

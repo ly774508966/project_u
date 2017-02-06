@@ -1235,7 +1235,15 @@ namespace lua
 				}
 				else
 				{
-					if (i >= luaArgTypes.Length) return int.MinValue; // required more params than provided
+					if (i >= luaArgTypes.Length)
+					{
+						// not enough parameter from lua
+						if (arg.IsOptional)
+						{
+							return totalScore; // if is a optional, return totalScore. implicit that more parameters will get higher score
+						}
+						return int.MinValue; // required more params than provided
+					}
 					var s = GetMatchScore(L, argStart + i, arg, luaArgTypes[i]);
 					if (s < 0)
 					{
@@ -1381,20 +1389,16 @@ namespace lua
 			if (variadicArg != null)
 				requiredArgCount = requiredArgCount - 1;
 
-			if (variadicArg != null)
+			if (luaArgCount < requiredArgCount)
 			{
-				Assert(luaArgCount >= requiredArgCount, "less arguments than required");
-			}
-			else
-			{
-				Assert(luaArgCount == requiredArgCount, "arguments count not match");
+				Assert(args[luaArgCount].IsOptional, "not enough parameters");
 			}
 
 			object[] actualArgs = null;
 			if (variadicArg != null)
 				actualArgs = new object[requiredArgCount + 1];
 			else
-				actualArgs = new object[luaArgCount];
+				actualArgs = new object[requiredArgCount];
 
 			disposableArgs = new IDisposable[luaArgCount];
 
@@ -1404,17 +1408,25 @@ namespace lua
 				var luaArgIdx = argStart + i;
 				var arg = args[idx];
 				var type = arg.ParameterType;
-				var luaType = Api.lua_type(L, luaArgIdx);
 				if (arg.IsOut)
 				{
 					actualArgs[idx] = GetDefaultValue(type);
 				}
 				else
 				{
-					bool isDisposable = false;
-					var obj = SetArg(L, actualArgs, idx, luaArgIdx, type, luaType, out isDisposable);
-					if (isDisposable)
-						disposableArgs[idx] = (IDisposable)obj;
+					var luaType = Api.LUA_TNIL;
+					if (idx < luaArgCount)
+					{
+						luaType = Api.lua_type(L, luaArgIdx);
+						bool isDisposable = false;
+						var obj = SetArg(L, actualArgs, idx, luaArgIdx, type, luaType, out isDisposable);
+						if (isDisposable)
+							disposableArgs[idx] = (IDisposable)obj;
+					}
+					else
+					{
+						actualArgs[idx] = arg.DefaultValue;
+					}
 				}
 			}
 

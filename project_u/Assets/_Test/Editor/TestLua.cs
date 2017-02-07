@@ -1690,6 +1690,24 @@ namespace lua.test
 			{
 				action();
 			}
+
+			public System.Action action;
+			public void DoAction()
+			{
+				if (action != null)
+				{
+					action();
+				}
+			}
+
+			public System.Action[] actions = new System.Action[1];
+			public void DoAction2()
+			{
+				if (actions[0] != null)
+				{
+					actions[0]();
+				}
+			}
 		}
 
 		[Test]
@@ -1762,5 +1780,34 @@ namespace lua.test
 			Api.lua_pop(L, 1);
 			Assert.AreEqual(80, ret);
 		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction_op_assignment()
+		{
+			var k = new K();
+			var f = LuaFunction.NewFunction(L, "function(k) k.action = function() _G['test1234'] = 'hello' end end");
+			f.Invoke(k);
+			k.DoAction();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tostring(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual("hello", ret);
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction_op_assignment_array()
+		{
+			var k = new K();
+			var f = LuaFunction.NewFunction(L, "function(k) k.actions[0] = function() _G['test1234'] = 'hello2' end end");
+			f.Invoke(k);
+			k.DoAction2();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tostring(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual("hello2", ret);
+		}
+
 	}
 }

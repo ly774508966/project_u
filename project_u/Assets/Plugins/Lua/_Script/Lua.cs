@@ -2137,14 +2137,14 @@ namespace lua
 			try
 			{
 				var propType = prop.PropertyType;
-				object convertedNumber;
-				if (ConvertNumber(propType, value, out convertedNumber))
+				object converted;
+				if (TryConvertTo(propType, value, out converted))
 				{
-					prop.SetValue(obj, convertedNumber, index);
+					prop.SetValue(obj, converted, index);
 				}
 				else
 				{
-					var converted = System.Convert.ChangeType(value, propType);
+					converted = System.Convert.ChangeType(value, propType);
 					prop.SetValue(obj, converted, index);
 				}
 			}
@@ -2155,7 +2155,7 @@ namespace lua
 			}
 		}
 
-		internal static bool ConvertNumber(Type type, object value, out object converted)
+		internal static bool TryConvertTo(Type type, object value, out object converted)
 		{
 			if (type == typeof(int))
 			{
@@ -2217,6 +2217,11 @@ namespace lua
 				converted = Convert.ToDecimal(value);
 				return true;
 			}
+			else if (type == typeof(System.Action))
+			{
+				converted = LuaFunction.ToAction((LuaFunction)value);
+				return true;
+			}
 			converted = null;
 			return false;
 		}
@@ -2235,14 +2240,14 @@ namespace lua
 				{
 					var field = (System.Reflection.FieldInfo)member;
 					var fieldType = field.FieldType;
-					object convertedNumber;
-					if (ConvertNumber(fieldType, value, out convertedNumber))
+					object converted;
+					if (TryConvertTo(fieldType, value, out converted))
 					{
-						field.SetValue(thisObject, convertedNumber);
+						field.SetValue(thisObject, converted);
 					}
 					else
 					{
-						var converted = System.Convert.ChangeType(value, fieldType);
+						converted = System.Convert.ChangeType(value, fieldType);
 						field.SetValue(thisObject, converted);
 					}
 				}
@@ -2250,14 +2255,14 @@ namespace lua
 				{
 					var prop = (System.Reflection.PropertyInfo)member;
 					var propType = prop.PropertyType;
-					object convertedNumber;
-					if (ConvertNumber(propType, value, out convertedNumber))
+					object converted;
+					if (TryConvertTo(propType, value, out converted))
 					{
-						prop.SetValue(thisObject, convertedNumber, null);
+						prop.SetValue(thisObject, converted, null);
 					}
 					else
 					{
-						var converted = System.Convert.ChangeType(value, propType);
+						converted = System.Convert.ChangeType(value, propType);
 						prop.SetValue(thisObject, converted, null);
 					}
 				}

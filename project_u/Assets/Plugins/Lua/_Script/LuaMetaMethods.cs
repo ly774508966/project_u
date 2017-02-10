@@ -237,14 +237,15 @@ namespace lua
 					var array = (System.Array)thisObject;
 					var value = Lua.ValueAtInternal(L, 3);
 					var index = (int)Api.lua_tointeger(L, 2);
-					object convertedNumber;
-					if (Lua.ConvertNumber(typeObject.GetElementType(), value, out convertedNumber))
+					var elemType = typeObject.GetElementType();
+					object converted;
+					if (Lua.TryConvertTo(elemType, value, out converted))
 					{
-						array.SetValue(convertedNumber, index);
+						array.SetValue(converted, index);
 					}
 					else
 					{
-						var converted = System.Convert.ChangeType(value, typeObject.GetElementType());
+						converted = System.Convert.ChangeType(value, elemType);
 						array.SetValue(converted, index);
 					}
 				}

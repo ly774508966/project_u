@@ -1122,7 +1122,7 @@ namespace lua
 				if (luaArgType == Api.LUA_TBOOLEAN) return 10;
 				return 5;
 			}
-			else if (type == typeof(LuaFunction))
+			else if (type == typeof(LuaFunction) || type == typeof(System.Action))
 			{
 				if (luaArgType == Api.LUA_TFUNCTION) return 10;
 			}
@@ -1235,7 +1235,15 @@ namespace lua
 				}
 				else
 				{
-					if (i >= luaArgTypes.Length) return int.MinValue; // required more params than provided
+					if (i >= luaArgTypes.Length)
+					{
+						// not enough parameter from lua
+						if (arg.IsOptional)
+						{
+							return totalScore; // if is a optional, return totalScore. implicit that more parameters will get higher score
+						}
+						return int.MinValue; // required more params than provided
+					}
 					var s = GetMatchScore(L, argStart + i, arg, luaArgTypes[i]);
 					if (s < 0)
 					{
@@ -1318,7 +1326,7 @@ namespace lua
 				case Api.LUA_TFUNCTION:
 					{
 						var host = CheckHost(L);
-						object t = null;
+						LuaFunction t = null;
 						if (host == L)
 						{
 							t = LuaFunction.MakeRefTo(host, luaArgIdx);
@@ -1330,8 +1338,16 @@ namespace lua
 							t = LuaFunction.MakeRefTo(host, -1);
 							Api.lua_pop(L, 1);
 						}
-						isDisposable = true;
-						actualArgs.SetValue(t, idx);
+                        if (type == typeof(System.Action)) // TODO: check generic parameter type
+						{
+							actualArgs.SetValue((System.Action)t, idx);
+							t.Dispose(); // unused anymore
+						}
+						else
+						{
+							isDisposable = true;
+							actualArgs.SetValue(t, idx);
+						}
 					}
 					break;
 				case Api.LUA_TTHREAD:
@@ -1381,20 +1397,16 @@ namespace lua
 			if (variadicArg != null)
 				requiredArgCount = requiredArgCount - 1;
 
-			if (variadicArg != null)
+			if (luaArgCount < requiredArgCount)
 			{
-				Assert(luaArgCount >= requiredArgCount, "less arguments than required");
-			}
-			else
-			{
-				Assert(luaArgCount == requiredArgCount, "arguments count not match");
+				Assert(args[luaArgCount].IsOptional, "not enough parameters");
 			}
 
 			object[] actualArgs = null;
 			if (variadicArg != null)
 				actualArgs = new object[requiredArgCount + 1];
 			else
-				actualArgs = new object[luaArgCount];
+				actualArgs = new object[requiredArgCount];
 
 			disposableArgs = new IDisposable[luaArgCount];
 
@@ -1404,17 +1416,25 @@ namespace lua
 				var luaArgIdx = argStart + i;
 				var arg = args[idx];
 				var type = arg.ParameterType;
-				var luaType = Api.lua_type(L, luaArgIdx);
 				if (arg.IsOut)
 				{
 					actualArgs[idx] = GetDefaultValue(type);
 				}
 				else
 				{
-					bool isDisposable = false;
-					var obj = SetArg(L, actualArgs, idx, luaArgIdx, type, luaType, out isDisposable);
-					if (isDisposable)
-						disposableArgs[idx] = (IDisposable)obj;
+					var luaType = Api.LUA_TNIL;
+					if (idx < luaArgCount)
+					{
+						luaType = Api.lua_type(L, luaArgIdx);
+						bool isDisposable = false;
+						var obj = SetArg(L, actualArgs, idx, luaArgIdx, type, luaType, out isDisposable);
+						if (isDisposable)
+							disposableArgs[idx] = (IDisposable)obj;
+					}
+					else
+					{
+						actualArgs[idx] = arg.DefaultValue;
+					}
 				}
 			}
 
@@ -2117,14 +2137,14 @@ namespace lua
 			try
 			{
 				var propType = prop.PropertyType;
-				object convertedNumber;
-				if (ConvertNumber(propType, value, out convertedNumber))
+				object converted;
+				if (TryConvertTo(propType, value, out converted))
 				{
-					prop.SetValue(obj, convertedNumber, index);
+					prop.SetValue(obj, converted, index);
 				}
 				else
 				{
-					var converted = System.Convert.ChangeType(value, propType);
+					converted = System.Convert.ChangeType(value, propType);
 					prop.SetValue(obj, converted, index);
 				}
 			}
@@ -2135,7 +2155,7 @@ namespace lua
 			}
 		}
 
-		internal static bool ConvertNumber(Type type, object value, out object converted)
+		internal static bool TryConvertTo(Type type, object value, out object converted)
 		{
 			if (type == typeof(int))
 			{
@@ -2197,6 +2217,11 @@ namespace lua
 				converted = Convert.ToDecimal(value);
 				return true;
 			}
+			else if (type == typeof(System.Action))
+			{
+				converted = LuaFunction.ToAction((LuaFunction)value);
+				return true;
+			}
 			converted = null;
 			return false;
 		}
@@ -2215,14 +2240,14 @@ namespace lua
 				{
 					var field = (System.Reflection.FieldInfo)member;
 					var fieldType = field.FieldType;
-					object convertedNumber;
-					if (ConvertNumber(fieldType, value, out convertedNumber))
+					object converted;
+					if (TryConvertTo(fieldType, value, out converted))
 					{
-						field.SetValue(thisObject, convertedNumber);
+						field.SetValue(thisObject, converted);
 					}
 					else
 					{
-						var converted = System.Convert.ChangeType(value, fieldType);
+						converted = System.Convert.ChangeType(value, fieldType);
 						field.SetValue(thisObject, converted);
 					}
 				}
@@ -2230,14 +2255,14 @@ namespace lua
 				{
 					var prop = (System.Reflection.PropertyInfo)member;
 					var propType = prop.PropertyType;
-					object convertedNumber;
-					if (ConvertNumber(propType, value, out convertedNumber))
+					object converted;
+					if (TryConvertTo(propType, value, out converted))
 					{
-						prop.SetValue(thisObject, convertedNumber, null);
+						prop.SetValue(thisObject, converted, null);
 					}
 					else
 					{
-						var converted = System.Convert.ChangeType(value, propType);
+						converted = System.Convert.ChangeType(value, propType);
 						prop.SetValue(thisObject, converted, null);
 					}
 				}

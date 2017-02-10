@@ -1666,5 +1666,148 @@ namespace lua.test
 			th.Resume(20);
 			Assert.AreEqual(35, (long)th.current[1]);
 		}
+
+		class K
+		{
+			public string Foo(string p0, params string[] ps)
+			{
+				return Foo(p0, "_abcd", ps);
+			}
+
+			public string Foo(string p0, string p1, params string[] ps)
+			{
+				var sb = new System.Text.StringBuilder();
+				sb.Append(p0);
+				sb.Append(p1);
+				foreach (var p in ps)
+				{
+					sb.Append(p);
+				}
+				return sb.ToString();
+			}
+
+			public void Bar(System.Action action)
+			{
+				action();
+			}
+
+			public System.Action action;
+			public void DoAction()
+			{
+				if (action != null)
+				{
+					action();
+				}
+			}
+
+			public System.Action[] actions = new System.Action[1];
+			public void DoAction2()
+			{
+				if (actions[0] != null)
+				{
+					actions[0]();
+				}
+			}
+		}
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(null, inst);
+				Assert.AreEqual("a_abcd", ret);
+			}
+		}
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter2()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a', 'b') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(null, inst);
+				Assert.AreEqual("ab", ret);
+			}
+		}
+
+
+		[Test]
+		public void TestCallingMethodWithDefaultParameter_WithVariadicParams()
+		{
+
+			using (var f = LuaFunction.NewFunction(
+				L,
+				"function(t) return t:Foo('a', 'b', 'kkk', 'ggg') end"))
+			{
+				var inst = new K();
+				var ret = (string)f.Invoke1(inst);
+				Assert.AreEqual("abkkkggg", ret);
+			}
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction()
+		{
+			var f = LuaFunction.NewFunction(L, "function() _G['test1234'] = 20 end");
+			var action = (System.Action)f;
+			action();
+			f.Dispose();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tointeger(L, -1);
+			Api.lua_pop(L, 1);
+
+			Assert.AreEqual(20, ret);
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction2()
+		{
+			var f = LuaFunction.NewFunction(L, "function(k) k:Bar(function() _G['test1234'] = 80 end) end");
+			f.Invoke(new K());
+			f.Dispose();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tointeger(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual(80, ret);
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction_op_assignment()
+		{
+			var k = new K();
+			var f = LuaFunction.NewFunction(L, "function(k) k.action = function() _G['test1234'] = 'hello' end end");
+			f.Invoke(k);
+			k.DoAction();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tostring(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual("hello", ret);
+		}
+
+		[Test]
+		public void TestConvertLuaFunctionToSystemAction_op_assignment_array()
+		{
+			var k = new K();
+			var f = LuaFunction.NewFunction(L, "function(k) k.actions[0] = function() _G['test1234'] = 'hello2' end end");
+			f.Invoke(k);
+			k.DoAction2();
+
+			Api.lua_getglobal(L, "test1234");
+			var ret = Api.lua_tostring(L, -1);
+			Api.lua_pop(L, 1);
+			Assert.AreEqual("hello2", ret);
+		}
+
 	}
 }

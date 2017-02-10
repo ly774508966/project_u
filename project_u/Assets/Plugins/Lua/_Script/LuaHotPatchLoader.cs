@@ -32,12 +32,11 @@ namespace lua.hotpatch
 		[HotPatchHub]
 		public static bool Hub(
 			string signature,
-			MethodBase method_, 
+			MethodBase method, 
 			object target,
 			out	object retval, 
 			params object[] args)
 		{
-			var method = (MethodInfo)method_;
 			try
 			{
 				if (find != null)
@@ -46,8 +45,11 @@ namespace lua.hotpatch
 					{
 						if (patch == null)
 						{
-							retval = Lua.GetDefaultValue(method.ReturnType);
-							return false; // dont break return
+							if (!method.IsConstructor)
+								retval = Lua.GetDefaultValue(((MethodInfo)method).ReturnType);
+							else
+								retval = null;
+							return false; // dont break return or change parameter
 						}
 
 						var L = patch.CheckValid();
@@ -70,16 +72,24 @@ namespace lua.hotpatch
 						L.Call(numArgs, Api.LUA_MULTRET);
 						var end = Api.lua_gettop(L);
 						var retIdx = top + 1;
-						var shouldBreakReturn = (bool)L.ValueAt(retIdx);
+						var shouldBreakReturnOrChangeParamOfConstructor = (bool)L.ValueAt(retIdx);
 						++retIdx;
-						if (method.ReturnType != typeof(void))
+						if (!method.IsConstructor)
 						{
-							retval = System.Convert.ChangeType(L.ValueAt(retIdx), method.ReturnType);
-							++retIdx;
+							var mi = (MethodInfo)method;
+							if (mi.ReturnType != typeof(void))
+							{
+								retval = System.Convert.ChangeType(L.ValueAt(retIdx), mi.ReturnType);
+								++retIdx;
+							}
+							else
+							{
+								retval = null; // wantever won't be executed
+							}
 						}
 						else
 						{
-							retval = null; // whatever will not be executed
+							retval = null; // wantever won't be executed
 						}
 
 						// out or ref parameters
@@ -89,13 +99,16 @@ namespace lua.hotpatch
 						{
 							int argIdx = i - retIdx;
 							var param = parameters[argIdx];
-							if (param.IsOut || param.ParameterType.IsByRef)
+							if (param.IsOut || param.ParameterType.IsByRef || method.IsConstructor)
 							{
-								args[argIdx] = System.Convert.ChangeType(L.ValueAt(retIdx), param.ParameterType.GetElementType());
+								if (param.IsOut || param.ParameterType.IsByRef)
+									args[argIdx] = System.Convert.ChangeType(L.ValueAt(retIdx), param.ParameterType.GetElementType());
+								else
+									args[argIdx] = System.Convert.ChangeType(L.ValueAt(retIdx), param.ParameterType);
 							}
 						}
 						Api.lua_settop(L, top);
-						return shouldBreakReturn;
+						return shouldBreakReturnOrChangeParamOfConstructor;
 					}
 				}
 			}
@@ -104,8 +117,17 @@ namespace lua.hotpatch
 				Config.LogError(string.Format("patch for {0} was executed failed. {1}", method.ToString(), e.Message));
 				// dont let exception escape
 			}
-			retval = Lua.GetDefaultValue(method.ReturnType);
-			return true; // dont break return
+
+			// nothing will	happen
+			if (!method.IsConstructor)
+			{
+				retval = Lua.GetDefaultValue(((MethodInfo)method).ReturnType);
+			}
+			else
+			{
+				retval = null; // wantever won't be executed
+			}
+			return false; // dont do anything
 		}
 
 

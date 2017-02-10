@@ -168,6 +168,18 @@ namespace lua.test
 			Assert.AreEqual(30, r);
 		}
 
+		[Test]
+		public void TestClassToBePached_Constructor()
+		{
+			lua.hotpatch.LuaHotPatchLoader.Patch(
+				"System.Void ClassToBePatched::.ctor(System.Int32)",
+				"function(this, value)\n" +
+				"  return true, 12345\n" + 
+				"end");
+
+			var t = new ClassToBePatched(10);
+			Assert.AreEqual(12345, t.intValue);
+		}
 	}
 
 }

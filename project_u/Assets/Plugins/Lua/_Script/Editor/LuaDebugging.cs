@@ -32,8 +32,19 @@ namespace lua
 	{
 		static LuaFunction debuggeePoll;
 
+		[MenuItem("Lua/Start Debugging (debug debuggee) ...")]
+		static void StartDebugging_DumpCommunication()
+		{
+			StartDebuggingWithOption(debugDebuggee:true);
+		}
+
 		[MenuItem("Lua/Start Debugging ...")]
 		static void StartDebugging()
+		{
+			StartDebuggingWithOption(debugDebuggee:false);
+		}
+
+		static void StartDebuggingWithOption(bool debugDebuggee = false)
 		{
 			if (Application.isPlaying)
 			{
@@ -51,7 +62,7 @@ namespace lua
 						"  local Debug = csharp.import('UnityEngine.Debug, UnityEngine')\n"	+
 						"  local json =	require 'json'\n" +
 						"  local debuggee =	require	'vscode-debuggee'\n" +
-						"  local startResult, startType = debuggee.start(json, { log = function(msg) Debug.Log(msg) end })\n" +
+						"  local startResult, startType = debuggee.start(json, { dumpCommunication = " + (debugDebuggee ? "true" : "false" ) + "})\n" +
 						"  Debug.Log('start debuggee ' .. startType .. ' ' .. tostring(startResult))\n" +
 						"  return debuggee.poll\n" + 
 						"end");

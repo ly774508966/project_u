@@ -67,6 +67,12 @@ namespace lua
 						"  return debuggee.poll\n" + 
 						"end");
 					L.Call(0, 2);
+					if (debuggeePoll != null)
+					{
+						LuaBehaviour.debuggeePoll = null;
+						debuggeePoll.Dispose();
+						debuggeePoll = null;
+					}
 					debuggeePoll = LuaFunction.MakeRefTo(L, -2);
 					LuaBehaviour.debuggeePoll = delegate ()
 					{
@@ -76,7 +82,7 @@ namespace lua
 						}
 						catch (Exception e)
 						{
-							Debug.LogError(e.Message);
+							Debug.LogError("debug session is ended unexpected: " + e.Message);
 							LuaBehaviour.debuggeePoll = null;
 							debuggeePoll.Dispose();
 							debuggeePoll = null;

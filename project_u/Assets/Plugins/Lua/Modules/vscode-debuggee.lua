@@ -9,17 +9,37 @@ local storedVariables = {}
 local nextVarRef = 1
 local baseDepth
 local breaker
+local sendEvent
 
 local onError = nil
+local log = nil
 
 local function defaultOnError(e)
-	print('****************************************************')
-	print(e)
-	print('****************************************************')
+	log('****************************************************\n'
+	.. e .. '\n'
+	.. '****************************************************')
 end
 
 
-if not setfenv then -- Lua 5.2+
+local function valueToString(value, depth)
+	local str = ''
+	depth = depth or 0
+	local t = type(value)
+	if t == 'table' then
+		str = str .. '{\n'
+		for k, v in pairs(value) do
+			str = str .. string.rep('  ', depth + 1) .. '[' .. valueToString(k) ..']' .. ' = ' .. valueToString(v, depth + 1) .. ',\n'
+		end
+		str = str .. string.rep('  ', depth) .. '}'
+	elseif t == 'string' then
+		str = str .. '"' .. tostring(value) .. '"'
+	else
+		str = str .. tostring(value)
+	end
+	return str
+end
+
+if not rawget(_G, 'setfenv') then -- Lua 5.2+
   -- based on http://lua-users.org/lists/lua-l/2010-06/msg00314.html
   -- this assumes f is a function
   local function findenv(f)
@@ -37,6 +57,14 @@ if not setfenv then -- Lua 5.2+
     return f end
 end
 
+-------------------------------------------------------------------------------
+local function stackHeight()
+	for i = 1, 9999999 do
+		if (debug.getinfo(i, '') == nil) then
+			return i
+		end
+	end
+end
 
 -------------------------------------------------------------------------------
 local sethook = debug.sethook
@@ -313,12 +341,11 @@ local function createPureBreaker()
 		end,
 
 		-- 실험적으로 알아낸 값들-_-ㅅㅂ
-		stackOffset =
-		{
+		stackOffset = {
 			enterDebugLoop = 6,
 			halt = 7,
 			step = 4,
-			stepDebugLoop = 7
+			stepDebugLoop = 7,
 		}
 	}
 end
@@ -331,7 +358,7 @@ local function sendFully(str)
 	local first = 1
 	while first <= #str do
 		local sent = sock:send(str, first)
-		if sent > 0 then
+		if sent and sent > 0 then
 			first = first + sent;
 		else
 			error('sock:send() returned < 0')
@@ -342,8 +369,8 @@ end
 -- 센드는 블럭이어도 됨.
 local function sendMessage(msg)
 	local body = json.encode(msg)
-	--print('SENDING:  ' .. body)	
 	sendFully('#' .. #body .. '\n' .. body)
+	--print('SENDING:  ' .. valueToString(msg))
 end
 
 -- 리시브는 블럭이 아니어야 할 거 같은데... 음... 블럭이어도 괜찮나?
@@ -365,11 +392,12 @@ end
 
 -------------------------------------------------------------------------------
 local function debugLoop()
+	log('debugLoop: ' .. debug.traceback())
 	storedVariables = {}
 	nextVarRef = 1
 	while true do
 		local msg = recvMessage()
-		--print('RECEIVED: ' .. json.encode(msg))
+		log('RECEIVED: ' .. valueToString(msg))
 		
 		local fn = handlers[msg.command]
 		if fn then
@@ -399,6 +427,9 @@ function debuggee.start(jsonLib, config)
 	local controllerHost = config.controllerHost or 'localhost'
 	local controllerPort = config.controllerPort or 56789
 	onError              = config.onError or defaultOnError
+	local redirectPrint  = config.redirectPrint or false
+	-- log                  = config.log or function(msg) print(msg) end
+	log                  = function(msg) end
 
 	local breakerType
 	if debug.sethalt then
@@ -428,6 +459,21 @@ function debuggee.start(jsonLib, config)
 	assert(initMessage.command == 'welcome')
 	sourceBasePath = initMessage.sourceBasePath
 
+	if redirectPrint then
+		_G.print = function(...)
+			local t = { ... }
+			for i, v in ipairs(t) do
+				t[i] = tostring(v)
+			end
+			sendEvent(
+				'output',
+				{
+					category = 'stdout',
+					output = table.concat(t, '\t')
+				})
+		end
+	end
+
 	debugLoop()
 	return true, breakerType
 end
@@ -443,7 +489,7 @@ function debuggee.poll()
 		if e == 'timeout' then break end
 
 		local msg = recvMessage()
-		--print('POLL-RECEIVED: ' .. json.encode(msg))
+		log('POLL-RECEIVED: ' .. valueToString(msg))
 		
 		if msg.command == 'pause' then
 			debuggee.enterDebugLoop(1)
@@ -498,7 +544,7 @@ local function sendFailure(req, msg)
 end
 
 -------------------------------------------------------------------------------
-local function sendEvent(eventName, body)
+sendEvent = function(eventName, body)
 	sendMessage({
 		event = eventName,
 		type = "event",
@@ -535,6 +581,7 @@ end
 
 -------------------------------------------------------------------------------
 _G.__halt__ = function()
+	log('__halt__ stack trace: ' .. debug.traceback())
 	baseDepth = breaker.stackOffset.halt
 	startDebugLoop()
 end
@@ -560,14 +607,7 @@ function debuggee.enterDebugLoop(depth, what)
 end
 
 -------------------------------------------------------------------------------
-
-function debuggee._debug(arg, ...)
-	
-end
-
-
--------------------------------------------------------------------------------
--- ★★★ https://github.com/Microsoft/vscode/blob/a3e2b3d975dcaf85ca4f40486008ce52b31dbdec/src/vs/workbench/parts/debug/common/debugProtocol.d.ts
+-- ★★★ https://github.com/Microsoft/vscode/blob/master/src/vs/workbench/parts/debug/common/debugProtocol.d.ts
 -------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
@@ -620,10 +660,14 @@ end
 
 -------------------------------------------------------------------------------
 function handlers.stackTrace(req)
+	log('handlers.stackTrace: ' .. debug.traceback())
+	log('handlers.stackTrace req -> \n' .. valueToString(req))
+
 	assert(req.arguments.threadId == 0)
 
 	local stackFrames = {} 
 	local firstFrame = (req.arguments.startFrame or 0) + baseDepth
+	log('firstFrame = ' .. firstFrame)
 	local lastFrame = (req.arguments.levels and (req.arguments.levels ~= 0))
 		and (firstFrame + req.arguments.levels - 1)
 		or (9999)
@@ -631,10 +675,10 @@ function handlers.stackTrace(req)
 	for i = firstFrame, lastFrame do
 		local info = debug.getinfo(i, 'lnS')
 		if (info == nil) then break end
-		--print(json.encode(info))
 
 		local src = info.source
-		if string.sub(src, 1, 1) == '@' then
+		local prefix = string.sub(src, 1, 1) 
+		if prefix == '@' then
 			src = string.sub(src, 2) -- 앞의 '@' 떼어내기
 		end
 
@@ -657,6 +701,8 @@ function handlers.stackTrace(req)
 		}
 		stackFrames[#stackFrames + 1] = sframe
 	end
+
+	log('stackFrames: ' .. valueToString(stackFrames))
 
 	sendSuccess(req, {
 		stackFrames = stackFrames
@@ -694,7 +740,7 @@ end
 local function registerVar(name, value, noQuote)
 	local ty = type(value)
 	local item = {
-		name = tostring(name),
+		name = (type(name) == 'number') and name or tostring(name),
 		type = ty
 	}
 
@@ -787,15 +833,6 @@ function handlers.continue(req)
 end
 
 -------------------------------------------------------------------------------
-local function stackHeight()
-	for i = 1, 9999999 do
-		if (debug.getinfo(i, '') == nil) then
-			return i
-		end
-	end
-end
-
--------------------------------------------------------------------------------
 local stepTargetHeight = nil
 local function step()
 	if (stepTargetHeight == nil) or (stackHeight() <= stepTargetHeight) then
@@ -809,6 +846,7 @@ end
 function handlers.next(req)
 	stepTargetHeight = stackHeight() - breaker.stackOffset.step
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 
@@ -816,6 +854,7 @@ end
 function handlers.stepIn(req)
 	stepTargetHeight = nil
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 
@@ -823,6 +862,7 @@ end
 function handlers.stepOut(req)
 	stepTargetHeight = stackHeight() - (breaker.stackOffset.step + 1)
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 

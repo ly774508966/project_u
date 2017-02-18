@@ -9,17 +9,39 @@ local storedVariables = {}
 local nextVarRef = 1
 local baseDepth
 local breaker
+local sendEvent
+local dumpCommunication = false
+local debugTargetCo = nil
+local redirectedPrintFunction = nil
 
 local onError = nil
 
 local function defaultOnError(e)
-	print('****************************************************')
-	print(e)
-	print('****************************************************')
+	print('****************************************************\n'
+		..e .. '\n'
+		..'****************************************************')
 end
 
 
-if not setfenv then -- Lua 5.2+
+local function valueToString(value, depth)
+	local str = ''
+	depth = depth or 0
+	local t = type(value)
+	if t == 'table' then
+		str = str .. '{\n'
+		for k, v in pairs(value) do
+			str = str .. string.rep('  ', depth + 1) .. '[' .. valueToString(k) ..']' .. ' = ' .. valueToString(v, depth + 1) .. ',\n'
+		end
+		str = str .. string.rep('  ', depth) .. '}'
+	elseif t == 'string' then
+		str = str .. '"' .. tostring(value) .. '"'
+	else
+		str = str .. tostring(value)
+	end
+	return str
+end
+
+if not rawget(_G, 'setfenv') then -- Lua 5.2+
   -- based on http://lua-users.org/lists/lua-l/2010-06/msg00314.html
   -- this assumes f is a function
   local function findenv(f)
@@ -37,7 +59,6 @@ if not setfenv then -- Lua 5.2+
     return f end
 end
 
-
 -------------------------------------------------------------------------------
 local sethook = debug.sethook
 debug.sethook = nil
@@ -47,6 +68,24 @@ coroutine.create = function(f)
 	local c = cocreate(f)
 	debuggee.addCoroutine(c)
 	return c
+end
+
+-------------------------------------------------------------------------------
+local function debug_getinfo(depth, what)
+	if debugTargetCo then
+		return debug.getinfo(debugTargetCo, depth, what)
+	else
+		return debug.getinfo(depth + 1, what)
+	end
+end
+
+-------------------------------------------------------------------------------
+local function debug_getlocal(depth, i)
+	if debugTargetCo then
+		return debug.getlocal(debugTargetCo, depth, i)
+	else
+		return debug.getlocal(depth + 1, i)
+	end
 end
 
 -------------------------------------------------------------------------------
@@ -158,6 +197,34 @@ end
 
 local coroutineSet = {}
 setmetatable(coroutineSet, { __mode = 'v' })
+
+-------------------------------------------------------------------------------
+-- 네트워크 유틸리티 {{{
+local function sendFully(str)
+	local first = 1
+	while first <= #str do
+		local sent = sock:send(str, first)
+		if sent and sent > 0 then
+			first = first + sent;
+		else
+			error('sock:send() returned < 0')
+		end
+	end
+end
+
+-- send log to debug console
+local function logToDebugConsole(output, category)
+	local dumpMsg = {
+		event = 'output',
+		type = 'event',
+		body = {
+			category = category or 'console',
+			output = output
+		}
+	}
+	local dumpBody = json.encode(dumpMsg)
+	sendFully('#' .. #dumpBody .. '\n' .. dumpBody)
+end
 
 -- 순정 모드 {{{
 local function createHaltBreaker()
@@ -279,10 +346,13 @@ local function createPureBreaker()
 			lineBreakCallback()
 		end
 
-		local info = debug.getinfo(2, 'Sl')
+		local info = debug_getinfo(2, 'Sl')
 		if info then
 			local path = chunkNameToPath(info.source)
-			local bpSet = breakpointsPerPath[path] 
+			if path then
+				path = string.lower(path)
+			end
+			local bpSet = breakpointsPerPath[path]
 			if bpSet and bpSet[info.currentline] then
 				_G.__halt__()
 			end
@@ -300,6 +370,9 @@ local function createPureBreaker()
 				t[ln] = true
 				verifiedLines[ln] = ln
 			end
+			if path then
+				path = string.lower(path)
+			end
 			breakpointsPerPath[path] = t
 			return verifiedLines
 		end,
@@ -313,36 +386,24 @@ local function createPureBreaker()
 		end,
 
 		-- 실험적으로 알아낸 값들-_-ㅅㅂ
-		stackOffset =
-		{
+		stackOffset = {
 			enterDebugLoop = 6,
 			halt = 7,
 			step = 4,
-			stepDebugLoop = 7
+			stepDebugLoop = 7,
 		}
 	}
 end
 
 -- 순정 모드 }}}
 
--------------------------------------------------------------------------------
--- 네트워크 유틸리티 {{{
-local function sendFully(str)
-	local first = 1
-	while first <= #str do
-		local sent = sock:send(str, first)
-		if sent > 0 then
-			first = first + sent;
-		else
-			error('sock:send() returned < 0')
-		end
-	end
-end
 
 -- 센드는 블럭이어도 됨.
 local function sendMessage(msg)
 	local body = json.encode(msg)
-	--print('SENDING:  ' .. body)	
+	if dumpCommunication then
+		logToDebugConsole('[SENDING] ' .. valueToString(msg))
+	end
 	sendFully('#' .. #body .. '\n' .. body)
 end
 
@@ -350,7 +411,8 @@ end
 local function recvMessage()
 	local header = sock:receive('*l')
 	if (header == nil) then
-		error('disconnected')
+		-- 디버거가 떨어진 상황
+		return nil
 	end
 	if (string.sub(header, 1, 1) ~= '#') then
 		error('헤더 이상함:' .. header)
@@ -369,19 +431,30 @@ local function debugLoop()
 	nextVarRef = 1
 	while true do
 		local msg = recvMessage()
-		--print('RECEIVED: ' .. json.encode(msg))
-		
-		local fn = handlers[msg.command]
-		if fn then
-			local rv = fn(msg)
+		if msg then
+			if dumpCommunication then
+				logToDebugConsole('[RECEIVED] ' .. valueToString(msg), 'stderr')
+			end
+			
+			local fn = handlers[msg.command]
+			if fn then
+				local rv = fn(msg)
 
-			-- continue인데 break하는 게 역설적으로 느껴지지만
-			-- 디버그 루프를 탈출(break)해야 정상 실행 흐름을 계속(continue)할 수 있지..
-			if (rv == 'CONTINUE') then
-				break;
+				-- continue인데 break하는 게 역설적으로 느껴지지만
+				-- 디버그 루프를 탈출(break)해야 정상 실행 흐름을 계속(continue)할 수 있지..
+				if (rv == 'CONTINUE') then
+					break;
+				end
+			else
+				--print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
 			end
 		else
-			--print('UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
+			-- 디버그 중에 디버거가 떨어졌다.
+			-- print펑션을 리다이렉트 한경우에는 원래대로 돌려놓는다
+			if redirectedPrintFunction then			
+				_G.print = redirectedPrintFunction
+			end		
+			break
 		end
 	end
 	storedVariables = {}
@@ -399,6 +472,11 @@ function debuggee.start(jsonLib, config)
 	local controllerHost = config.controllerHost or 'localhost'
 	local controllerPort = config.controllerPort or 56789
 	onError              = config.onError or defaultOnError
+	local redirectPrint  = config.redirectPrint or false
+	dumpCommunication    = config.dumpCommunication or false
+	if not config.luaStyleLog then
+		valueToString = function(value) return json.encode(value) end
+	end
 
 	local breakerType
 	if debug.sethalt then
@@ -425,8 +503,24 @@ function debuggee.start(jsonLib, config)
 	sock:setoption('tcp-nodelay', true)
 
 	local initMessage = recvMessage()
-	assert(initMessage.command == 'welcome')
+	assert(initMessage and initMessage.command == 'welcome')
 	sourceBasePath = initMessage.sourceBasePath
+
+	if redirectPrint then
+		redirectedPrintFunction = _G.print -- 디버거가 떨어질때를 대비해서 보관한다
+		_G.print = function(...)
+			local t = { ... }
+			for i, v in ipairs(t) do
+				t[i] = tostring(v)
+			end
+			sendEvent(
+				'output',
+				{
+					category = 'stdout',
+					output = table.concat(t, '\t')
+				})
+		end
+	end
 
 	debugLoop()
 	return true, breakerType
@@ -443,19 +537,26 @@ function debuggee.poll()
 		if e == 'timeout' then break end
 
 		local msg = recvMessage()
-		--print('POLL-RECEIVED: ' .. json.encode(msg))
-		
-		if msg.command == 'pause' then
-			debuggee.enterDebugLoop(1)
-			return
-		end
 
-		local fn = handlers[msg.command]
-		if fn then
-			local rv = fn(msg)
-			-- Ignores rv, because this loop never blocks except explicit pause command.
+		if msg then
+			if dumpCommunication then
+				logToDebugConsole('[POLL-RECEIVED] ' .. valueToString(msg), 'stderr')
+			end
+			
+			if msg.command == 'pause' then
+				debuggee.enterDebugLoop(1)
+				return
+			end
+
+			local fn = handlers[msg.command]
+			if fn then
+				local rv = fn(msg)
+				-- Ignores rv, because this loop never blocks except explicit pause command.
+			else
+				--print('POLL-UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
+			end
 		else
-			--print('POLL-UNKNOWN DEBUG COMMAND: ' .. tostring(msg.command))
+			break
 		end
 	end
 end
@@ -498,7 +599,7 @@ local function sendFailure(req, msg)
 end
 
 -------------------------------------------------------------------------------
-local function sendEvent(eventName, body)
+sendEvent = function(eventName, body)
 	sendMessage({
 		event = eventName,
 		type = "event",
@@ -540,7 +641,7 @@ _G.__halt__ = function()
 end
 
 -------------------------------------------------------------------------------
-function debuggee.enterDebugLoop(depth, what)
+function debuggee.enterDebugLoop(depthOrCo, what)
 	if sock == nil then
 		return false
 	end
@@ -554,20 +655,19 @@ function debuggee.enterDebugLoop(depth, what)
 			})
 	end
 
-	baseDepth = (depth or 0) + breaker.stackOffset.enterDebugLoop
+	if type(depthOrCo) == 'thread' then
+		baseDepth = 0
+		debugTargetCo = depthOrCo
+	else
+		baseDepth = (depthOrCo or 0) + breaker.stackOffset.enterDebugLoop
+		debugTargetCo = nil
+	end
 	startDebugLoop()
 	return true
 end
 
 -------------------------------------------------------------------------------
-
-function debuggee._debug(arg, ...)
-	
-end
-
-
--------------------------------------------------------------------------------
--- ★★★ https://github.com/Microsoft/vscode/blob/a3e2b3d975dcaf85ca4f40486008ce52b31dbdec/src/vs/workbench/parts/debug/common/debugProtocol.d.ts
+-- ★★★ https://github.com/Microsoft/vscode/blob/master/src/vs/workbench/parts/debug/common/debugProtocol.d.ts
 -------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
@@ -629,12 +729,12 @@ function handlers.stackTrace(req)
 		or (9999)
 
 	for i = firstFrame, lastFrame do
-		local info = debug.getinfo(i, 'lnS')
+		local info = debug_getinfo(i, 'lnS')
 		if (info == nil) then break end
-		--print(json.encode(info))
 
 		local src = info.source
-		if string.sub(src, 1, 1) == '@' then
+		local prefix = string.sub(src, 1, 1) 
+		if prefix == '@' then
 			src = string.sub(src, 2) -- 앞의 '@' 떼어내기
 		end
 
@@ -691,10 +791,23 @@ function handlers.scopes(req)
 end
 
 -------------------------------------------------------------------------------
-local function registerVar(name, value, noQuote)
+local function registerVar(varNameCount, name_, value, noQuote)
 	local ty = type(value)
+	local name
+	if type(name_) == 'number' then
+		name = '[' .. name_ .. ']'
+	else
+		name = tostring(name_)
+	end
+	if varNameCount[name] then
+		varNameCount[name] = varNameCount[name] + 1
+		name = name .. ' (' .. varNameCount[name] .. ')'
+	else
+		varNameCount[name] = 1
+	end
+	
 	local item = {
-		name = tostring(name),
+		name = name,
 		type = ty
 	}
 
@@ -720,27 +833,28 @@ end
 function handlers.variables(req)
 	local varRef = req.arguments.variablesReference
 	local variables = {}
+	local varNameCount = {}
 	local function addVar(name, value, noQuote)
-		variables[#variables + 1] = registerVar(name, value, noQuote) 
+		variables[#variables + 1] = registerVar(varNameCount, name, value, noQuote)
 	end
 
 	if (varRef >= 1000000) then
-		-- 스코프임.
+		-- Scope.
 		local depth = math.floor(varRef / 1000000)
 		local scopeType = varRef % 1000000
 		if scopeType == scopeTypes.Locals then
 			for i = 1, 9999 do
-				local name, value = debug.getlocal(depth, i)
+				local name, value = debug_getlocal(depth, i)
 				if name == nil then break end
-				addVar(name, value)
+				addVar(name, value, nil)
 			end
 		elseif scopeType == scopeTypes.Upvalues then
-			local info = debug.getinfo(depth, 'f')
+			local info = debug_getinfo(depth, 'f')
 			if info and info.func then
 				for i = 1, 9999 do
 					local name, value = debug.getupvalue(info.func, i)
 					if name == nil then break end
-					addVar(name, value)
+					addVar(name, value, nil)
 				end
 			end
 		elseif scopeType == scopeTypes.Globals then
@@ -750,13 +864,27 @@ function handlers.variables(req)
 			table.sort(variables, function(a, b) return a.name < b.name end)
 		end 
 	else
-		-- 펼치기임.
+		-- Expansion.
 		local var = storedVariables[varRef]
 		if type(var) == 'table' then
 			for k, v in pairs(var) do
 				addVar(k, v)
 			end
-			table.sort(variables, function(a, b) return a.name < b.name end)
+			table.sort(variables, function(a, b)
+				local aNum, aMatched = string.gsub(a.name, '^%[(%d+)%]$', '%1')
+				local bNum, bMatched = string.gsub(b.name, '^%[(%d+)%]$', '%1')
+
+				if (aMatched == 1) and (bMatched == 1) then
+					-- both are numbers. compare numerically.
+					return tonumber(aNum) < tonumber(bNum)
+				elseif aMatched == bMatched then
+					-- both are strings. compare alphabetically.
+					return a.name < b.name
+				else
+					-- string comes first.
+					return aMatched < bMatched
+				end
+			end)
 		elseif type(var) == 'function' then
 			local info = debug.getinfo(var, 'S')
 			addVar('(source)', tostring(info.short_src), true)
@@ -789,7 +917,7 @@ end
 -------------------------------------------------------------------------------
 local function stackHeight()
 	for i = 1, 9999999 do
-		if (debug.getinfo(i, '') == nil) then
+		if (debug_getinfo(i, '') == nil) then
 			return i
 		end
 	end
@@ -809,6 +937,7 @@ end
 function handlers.next(req)
 	stepTargetHeight = stackHeight() - breaker.stackOffset.step
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 
@@ -816,6 +945,7 @@ end
 function handlers.stepIn(req)
 	stepTargetHeight = nil
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 
@@ -823,6 +953,7 @@ end
 function handlers.stepOut(req)
 	stepTargetHeight = stackHeight() - (breaker.stackOffset.step + 1)
 	breaker.setLineBreak(step)
+	sendSuccess(req, {})
 	return 'CONTINUE'
 end
 
@@ -860,7 +991,7 @@ function handlers.evaluate(req)
 	end
 
 	if depth then
-		local info = debug.getinfo(depth, 'f')
+		local info = debug_getinfo(depth, 'f')
 		if info and info.func then
 			for i = 1, 9999 do
 				local name, value = debug.getupvalue(info.func, i)
@@ -870,7 +1001,7 @@ function handlers.evaluate(req)
 		end
 
 		for i = 1, 9999 do
-			local name, value = debug.getlocal(depth, i)
+			local name, value = debug_getlocal(depth, i)
 			if name == nil then break end
 			set(name, value)
 		end
@@ -893,7 +1024,8 @@ function handlers.evaluate(req)
 		return
 	end
 
-	local item = registerVar('', aux)
+	local varNameCount = {}
+	local item = registerVar(varNameCount, '', aux)
 
 	sendSuccess(req, {
 		result = item.value,

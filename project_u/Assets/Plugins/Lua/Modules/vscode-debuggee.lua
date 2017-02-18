@@ -370,7 +370,7 @@ end
 local function sendMessage(msg)
 	local body = json.encode(msg)
 	sendFully('#' .. #body .. '\n' .. body)
-	--print('SENDING:  ' .. valueToString(msg))
+	log('SENDING:  ' .. valueToString(msg))
 end
 
 -- 리시브는 블럭이 아니어야 할 거 같은데... 음... 블럭이어도 괜찮나?
@@ -737,10 +737,20 @@ function handlers.scopes(req)
 end
 
 -------------------------------------------------------------------------------
-local function registerVar(name, value, noQuote)
+local function registerVar(name_, value, noQuote, index)
 	local ty = type(value)
+	local name
+	if type(name_) == 'number' then
+		name = '[' .. name_ .. ']'
+	else
+		name = tostring(name_)
+	end
+	if index then
+		name = name .. ' /' .. index
+	end
+	
 	local item = {
-		name = (type(name) == 'number') and name or tostring(name),
+		name = name,
 		type = ty
 	}
 
@@ -766,8 +776,8 @@ end
 function handlers.variables(req)
 	local varRef = req.arguments.variablesReference
 	local variables = {}
-	local function addVar(name, value, noQuote)
-		variables[#variables + 1] = registerVar(name, value, noQuote) 
+	local function addVar(name, value, noQuote, index)
+		variables[#variables + 1] = registerVar(name, value, noQuote, index) 
 	end
 
 	if (varRef >= 1000000) then
@@ -778,7 +788,7 @@ function handlers.variables(req)
 			for i = 1, 9999 do
 				local name, value = debug.getlocal(depth, i)
 				if name == nil then break end
-				addVar(name, value)
+				addVar(name, value, nil, i)
 			end
 		elseif scopeType == scopeTypes.Upvalues then
 			local info = debug.getinfo(depth, 'f')
@@ -786,7 +796,7 @@ function handlers.variables(req)
 				for i = 1, 9999 do
 					local name, value = debug.getupvalue(info.func, i)
 					if name == nil then break end
-					addVar(name, value)
+					addVar(name, value, nil, i)
 				end
 			end
 		elseif scopeType == scopeTypes.Globals then

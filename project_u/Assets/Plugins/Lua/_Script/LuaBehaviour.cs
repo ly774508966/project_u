@@ -148,6 +148,19 @@ namespace lua
 		}
 		int luaBehaviourRef = Api.LUA_NOREF;
 
+		public void LoadScript(string scriptName)
+		{
+			if (!scriptLoaded)
+			{
+				this.scriptName = scriptName;
+				Awake();
+			}
+			else
+			{
+				Debug.LogWarning("script already loaded.");
+			}
+		}
+
 		void Awake()
 		{
 			if (L == null)

@@ -1692,6 +1692,71 @@ namespace lua
 			}
 		}
 
+		static System.Reflection.MethodBase MatchMethod(IntPtr L, 
+			Type invokingType, Type type, string methodName, string mangledName, bool invokingStaticMethod,
+			object target, int argStart, int[] luaArgTypes, ref System.Reflection.ParameterInfo[] parameters)
+		{
+			System.Reflection.MethodBase method;
+			var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+			var score = Int32.MinValue;
+			System.Reflection.MethodBase selected = null;
+			List<Exception> pendingExceptions = null;
+			foreach (var member in members)
+			{
+				Assert(member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
+				var m = (System.Reflection.MethodInfo)member;
+				if (m.IsStatic)
+				{
+					Assert(invokingStaticMethod, string.Format("invoking static method {0} with incorrect syntax.", m.ToString()));
+					target = null;
+				}
+				else
+				{
+					Assert(!invokingStaticMethod, string.Format("invoking non-static method {0} with incorrect syntax.", m.ToString()));
+				}
+				try
+				{
+					MatchingParameters(L, argStart, m, luaArgTypes, ref score, ref selected, ref parameters);
+				}
+				catch (System.Reflection.AmbiguousMatchException e)
+				{
+					throw e;
+				}
+				catch (Exception e)
+				{
+					if (pendingExceptions == null)
+						pendingExceptions = new List<Exception>();
+					pendingExceptions.Add(e);
+				}
+			}
+			method = selected;
+			if (method != null)
+			{
+				CacheMethod(L, invokingType, mangledName, method);
+			}
+			else
+			{
+				if (type != typeof(object))
+				{
+					// search into parent
+					return MatchMethod(L, invokingType, type.BaseType, methodName, mangledName, invokingStaticMethod, target, argStart, luaArgTypes, ref parameters);
+				}
+
+				var additionalMessage = string.Empty;
+				if (pendingExceptions != null && pendingExceptions.Count > 0)
+				{
+					var sb = new System.Text.StringBuilder();
+					for (int i = 0; i < pendingExceptions.Count; ++i)
+					{
+						sb.AppendLine(pendingExceptions[i].Message);
+					}
+					additionalMessage = sb.ToString();
+				}
+				throw new Exception(string.Format("no corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
+			}
+			return method;
+		}
+
 		static int InvokeMethodInternal(IntPtr L)
 		{
 			// upvalue 1 --> isInvokingFromClass
@@ -1762,57 +1827,7 @@ namespace lua
 
 			if (method == null)
 			{
-				var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
-				var score = Int32.MinValue;
-				System.Reflection.MethodBase selected = null;
-				List<Exception> pendingExceptions = null;
-				foreach (var member in members)
-				{
-					Assert(member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
-					var m = (System.Reflection.MethodInfo)member;
-					if (m.IsStatic)
-					{
-						Assert(invokingStaticMethod, string.Format("invoking static method {0} with incorrect syntax.", m.ToString()));
-						target = null;
-					}
-					else
-					{
-						Assert(!invokingStaticMethod, string.Format("invoking non-static method {0} with incorrect syntax.", m.ToString()));
-					}
-					try
-					{
-						MatchingParameters(L, argStart, m, luaArgTypes, ref score, ref selected, ref parameters);
-					}
-					catch (System.Reflection.AmbiguousMatchException e)
-					{
-						throw e;
-					}
-					catch (Exception e)
-					{
-						if (pendingExceptions == null)
-							pendingExceptions = new List<Exception>();
-						pendingExceptions.Add(e);
-					}
-				}
-				method = selected;
-				if (method != null)
-				{
-					CacheMethod(L, type, mangledName, method);
-				}
-				else
-				{
-					var additionalMessage = string.Empty;
-					if (pendingExceptions != null && pendingExceptions.Count > 0)
-					{
-						var sb = new System.Text.StringBuilder();
-						for (int i = 0; i < pendingExceptions.Count; ++i)
-						{
-							sb.AppendLine(pendingExceptions[i].Message);
-						}
-						additionalMessage = sb.ToString();
-					}
-					throw new Exception(string.Format("no corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
-				}
+				method = MatchMethod(L, type, type, methodName, mangledName, invokingStaticMethod, target, argStart, luaArgTypes, ref parameters);
 			}
 			else
 			{

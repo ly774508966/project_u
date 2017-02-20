@@ -1494,13 +1494,13 @@ namespace lua.test
 				var t = new TestNilParam();
 				using (var f = LuaFunction.NewFunction(L, "function(t) return csharp.check_error(t:FuncNonValueType(nil)) end"))
 				{
-					f.Invoke(null, t);
+					f.Invoke(t);
 				}
 			}
 			catch (System.Exception e)
 			{
 				Config.LogError = null;
-				Assert.True(thisMessage.IndexOf("Argument cannot be null") > 0);
+				Assert.True(thisMessage.IndexOf("no corresponding") > 0);
 				throw e;
 			}
 		}
@@ -1807,6 +1807,63 @@ namespace lua.test
 			var ret = Api.lua_tostring(L, -1);
 			Api.lua_pop(L, 1);
 			Assert.AreEqual("hello2", ret);
+		}
+
+		class Base
+		{
+			public static int Foo()
+			{
+				return 10;
+			}
+			public int Bar()
+			{
+				return 20;
+			}
+			public virtual int Bar2()
+			{
+				return 30;
+			}
+		}
+
+		class Derived : Base
+		{
+			public override int Bar2()
+			{
+				return 40;
+			}
+		}
+
+		[Test]
+		public void Test_Issue_CallStaticFunctionInParentClass()
+		{
+			L.Import(typeof(Derived), "Derived");
+			using (var f = LuaFunction.NewFunction(L, "function() return Derived.Foo() end"))
+			{
+				Assert.AreEqual(10, f.Invoke1());
+			}
+		}
+
+		[Test]
+		public void Test_Issue_CallFunctionInParentClass()
+		{
+			var d = new Derived();
+			L.Import(typeof(Derived), "Derived");
+			using (var f = LuaFunction.NewFunction(L, "function(d) return d:Bar() end"))
+			{
+				Assert.AreEqual(20, f.Invoke1(d));
+			}
+		}
+
+
+		[Test]
+		public void Test_Issue_CallFunctionInParentClass2()
+		{
+			var d = new Derived();
+			L.Import(typeof(Derived), "Derived");
+			using (var f = LuaFunction.NewFunction(L, "function(d) return d:Bar2() end"))
+			{
+				Assert.AreEqual(40, f.Invoke1(d));
+			}
 		}
 
 	}

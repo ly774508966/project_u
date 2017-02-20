@@ -36,6 +36,7 @@ namespace lua
 	 * 	
 	 *  -- _Init function for new behaviour instance
 	 *  function MyLuaBehaviour._Init(instance) -- notice, it use dot `.' to define _Init function (`static' function)
+	 * 		-- values put in instance table used as self below
 	 * 		instance.value0 = 32
 	 * 		instance.value1 = 'abc'
 	 * 
@@ -55,9 +56,9 @@ namespace lua
 	 * 
 	 * 
 	 *  -- called at the end of host LuaBehaviour.Awake. 
-	 *  function MyLuaBehaviour:Awake(instance) -- behaviour table
+	 *  function MyLuaBehaviour:Awake(behaviour)
 	 * 		-- awake
-	 * 		instance.some_value = self:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
+	 * 		self.some_value = behaviour:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
 	 *  end
 	 * 
 	 * 	-- called at LuaBehaviour.Update
@@ -160,6 +161,7 @@ namespace lua
 				Debug.LogWarning("script already loaded.");
 			}
 		}
+
 
 		void Awake()
 		{
@@ -321,8 +323,8 @@ namespace lua
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 				if (Api.lua_getfield(L, -1, method) == Api.LUA_TFUNCTION)
 				{
+					Api.lua_pushvalue(L, -2);
 					L.PushRef(handleToThis);
-					Api.lua_pushvalue(L, -3);
 					int argsLength = 0;
 					if (args != null && args.Length > 0)
 					{
@@ -350,8 +352,8 @@ namespace lua
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
 			{
+				Api.lua_pushvalue(L, -2);
 				L.PushRef(handleToThis);
-				Api.lua_pushvalue(L, -3);
 				try
 				{
 					L.Call(2, 0);
@@ -394,8 +396,8 @@ namespace lua
 			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
 				// stack: func, instance table
+				Api.lua_pushvalue(L, -2); // behaviour table
 				L.PushRef(handleToThis); // this csharp object
-				Api.lua_pushvalue(L, -3); // behaviour table
 				try
 				{
 					L.Call(2, 0);

@@ -258,8 +258,8 @@ namespace lua
 			if (scriptLoaded_)
 			{
 				// load	_Init from serialized version
-				LoadInitFuncToBehaviourTable(L);
-				RunInitFuncOnBehaviourTable(L);
+				LoadInitFuncToInstanceTable(L);
+				RunInitFuncOnInstanceTable(L);
 
 				// Awake Lua script
 				instanceBehaviour.SetLuaBehaviour(this);
@@ -270,7 +270,7 @@ namespace lua
 			}
 		}
 
-		void RunInitFuncOnBehaviourTable(Lua L)
+		void RunInitFuncOnInstanceTable(Lua L)
 		{
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// Behaviour._Init hides Script._Init
@@ -434,14 +434,14 @@ namespace lua
 
 		[SerializeField]
 		[HideInInspector]
-		byte[] _Init;
-		bool LoadInitFuncToBehaviourTable(Lua L)
+		byte[] _InitChunk;
+		bool LoadInitFuncToInstanceTable(Lua L)
 		{
-			if (_Init == null || _Init.Length == 0) return false;
+			if (_InitChunk == null || _InitChunk.Length == 0) return false;
 			try
 			{
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-				L.LoadChunk(_Init, scriptName + "_Init");
+				L.LoadChunk(_InitChunk, scriptName + "_Init");
 				L.Call(0, 1); // run loaded chunk
 				Api.lua_setfield(L, -2, "_Init");
 				Api.lua_pop(L, 1);  // pop behaviour table
@@ -490,23 +490,23 @@ namespace lua
 
 		public bool IsInitFuncDumped()
 		{
-			return !string.IsNullOrEmpty(scriptName) && _Init != null && _Init.Length > 0;
+			return !string.IsNullOrEmpty(scriptName) && _InitChunk != null && _InitChunk.Length > 0;
 		}
 
 		public byte[] GetInitChunk()
 		{
-			return _Init;
+			return _InitChunk;
 		}
 
 		public void SetInitChunk(byte[] chunk)
 		{
-			_Init = chunk;
+			_InitChunk = chunk;
 			if (Application.isPlaying)
 			{
 				if (scriptLoaded)
 				{
-					LoadInitFuncToBehaviourTable(L);
-					RunInitFuncOnBehaviourTable(L);
+					LoadInitFuncToInstanceTable(L);
+					RunInitFuncOnInstanceTable(L);
 				}
 			}
 		}

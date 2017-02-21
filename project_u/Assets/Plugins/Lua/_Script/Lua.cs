@@ -2129,8 +2129,10 @@ namespace lua
 			else
 			{
 				// search into base	class of obj
-				Assert(objType != typeof(object), string.Format("Member {0} not found.", memberName));
-				return GetMember(L, obj, objType.BaseType, memberName);
+				if (objType != typeof(object))
+					return GetMember(L, obj, objType.BaseType, memberName);
+				Api.lua_pushnil(L);
+				return 1;
 			}
 		}
 

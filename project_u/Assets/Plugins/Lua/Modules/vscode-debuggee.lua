@@ -52,11 +52,12 @@ if not rawget(_G, 'setfenv') then -- Lua 5.2+
       level = level + 1
     until name == nil
     return nil end
-  getfenv = function (f) return(select(2, findenv(f)) or _G) end
-  setfenv = function (f, t)
-    local level = findenv(f)
-    if level then debug.setupvalue(f, level, t) end
-    return f end
+  rawset(_G, 'getfenv', function (f) return(select(2, findenv(f)) or _G) end)
+  rawset(_G, 'setfenv', function (f, t)
+		local level = findenv(f)
+		if level then debug.setupvalue(f, level, t) end
+		return f 
+	end)
 end
 
 -------------------------------------------------------------------------------
@@ -635,10 +636,10 @@ local function startDebugLoop()
 end
 
 -------------------------------------------------------------------------------
-_G.__halt__ = function()
-	baseDepth = breaker.stackOffset.halt
-	startDebugLoop()
-end
+rawset(_G, '__halt__', function()
+		baseDepth = breaker.stackOffset.halt
+		startDebugLoop()
+	end)
 
 -------------------------------------------------------------------------------
 function debuggee.enterDebugLoop(depthOrCo, what)

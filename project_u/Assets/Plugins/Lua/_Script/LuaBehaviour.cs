@@ -32,8 +32,10 @@ namespace lua
 	 * 
 	 *  -- A LuaBehaviour script, MyLuaBehaviour.lua
 	 *  
-	 * 	local MyLuaBehaviour = {}
-	 * 	
+	 *  local MyLuaBehaviour = {
+	 * 		staticValue = 10 -- a `static' variable
+	 *  }
+	 *
 	 *  -- _Init function for new behaviour instance
 	 *  function MyLuaBehaviour._Init(instance) -- notice, it use dot `.' to define _Init function (`static' function)
 	 * 		-- values put in instance table used as self below
@@ -47,7 +49,8 @@ namespace lua
 	 *  -- When a new GameObject which has LuaBehaviour component with MyLuaBehaviour.lua attached Awake
 	 *  -- from deserialized data, it will create an empty table as instance of this Lua component (aka behaviour table).
 	 *  -- The instance (behaviour table) is passed to _Init function for initialization. 
-	 *  -- All values set to instance *in _Init function* can be serialized with GameObject. In fact, the function it self is serialized.
+	 *  -- All values set to instance *in _Init function* can be serialized with GameObject. In fact, the function itself 
+	 *  -- is serialized.
 	 *  -- And those values will show in Inspector. Any tweaking on those values also can be serialized as new _Init
 	 *  -- function.
 	 *  -- When Awake from deserialized data, _Init function is loaded and 'hides' the original _Init function. 
@@ -56,13 +59,14 @@ namespace lua
 	 * 
 	 * 
 	 *  -- called at the end of host LuaBehaviour.Awake. 
-	 *  function MyLuaBehaviour:Awake(behaviour)
+	 *  function MyLuaBehaviour:Awake()
 	 * 		-- awake
-	 * 		self.some_value = behaviour:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
+	 * 		self.some_value = self:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
+	 * 		MyLuaBehaviour.staticValue = 20
 	 *  end
 	 * 
 	 * 	-- called at LuaBehaviour.Update
-	 *  function MyLuaBehaviour:Update(instance)
+	 *  function MyLuaBehaviour:Update()
 	 * 		-- update
 	 *  end
 	 * 
@@ -162,7 +166,6 @@ namespace lua
 			}
 		}
 
-
 		void Awake()
 		{
 			if (L == null)
@@ -180,28 +183,50 @@ namespace lua
 			// make	instance
 			handleToThis = L.MakeRefTo(this);
 
-			Api.lua_newtable(L); // instance behaviour table
-
-			// ref instance behaviour table
+			Api.lua_newtable(L); 
+			// stack: instance table
 			luaBehaviourRef = L.MakeRefAt(-1);
 
-		
 			// meta
-			Api.lua_createtable(L, 0, 1);
+			Api.lua_createtable(L, 1, 1);
+			// stack: instance table, meta
+
+			L.PushRef(handleToThis);
+			Api.lua_rawseti(L, -2, 1); // meta[1] = behaviour (this)
+
+			// TODO: can be	opt, each Script take its own meta for LuaBehaviour
 			// load	class
 			Api.luaL_requiref(L, scriptName, Lua.LoadScript1, 0);
+			// stack: instance table, meta, script table
 
 			if (Api.lua_istable(L, -1)) // set metatable and bind messages
 			{
-				// stack: behaviour table, meta, script
-				Api.lua_setfield(L, -2, "__index"); // meta.__index = script
-													// stack: behaviour table, meta
+				// stack: behaviour table, meta, script table
+				L.DoString("return function(be, script)\n" +
+							"  return function(t, key)\n" +
+							"    local val = script[key]\n"	+
+							"    if not val then val = be[key] end\n" +
+							"    return val\n" +
+							"  end\n" +
+							"end", 1, "LuaBehaviour_GetMetaIndexFunction");
+				L.PushRef(handleToThis);
+				Api.lua_pushvalue(L, -3);
+				L.Call(2, 1);
+				// stack: instance table, meta, script table, index function
+				Api.lua_setfield(L, -3, "__index");
+				// stack: instance table, meta, script table
+				Api.lua_insert(L, -3);
+				// stack: script table, instance table, meta
 				Api.lua_setmetatable(L, -2);
+				// stack: script table, instance table
 
 				// check message
 				for (Message i = Message.Awake; i < Message._Count; ++i)
 				{
-					Api.lua_getfield(L, -1, i.ToString());
+					Api.lua_pushstring(L, i.ToString());
+					// stack: script table, instance table, key
+					Api.lua_rawget(L, -3);
+					// stack: script table, instance table, function?
 					if (Api.lua_isfunction(L, -1))
 					{
 						messageFlag = messageFlag | MakeFlag(i);
@@ -211,6 +236,7 @@ namespace lua
 					{
 						Api.lua_pop(L, 1); // pop field
 					}
+					// stack: script table,	instance table
 				}
 
 				// choose script
@@ -218,16 +244,16 @@ namespace lua
 				var componentType = Type.GetType("lua.LuaInstanceBehaviour" + flag.ToString());
 				instanceBehaviour = gameObject.AddComponent(componentType) as LuaInstanceBehaviour0;
 
-				Api.lua_pop(L, 1); // pop behaviour table
+				Api.lua_pop(L, 2); // pop instance table, script table
 
 				scriptLoaded_ = true;
-
 			}
 			else
 			{
-				Api.lua_pop(L, 3); // pop behaviour table, meta and result of requiref
+				Api.lua_pop(L, 3); // pop instance table, meta, script table
 			}
 
+			// stack: (*empty)
 
 			if (scriptLoaded_)
 			{
@@ -319,19 +345,17 @@ namespace lua
 			var top = Api.lua_gettop(L);
 			try
 			{
-
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 				if (Api.lua_getfield(L, -1, method) == Api.LUA_TFUNCTION)
 				{
 					Api.lua_pushvalue(L, -2);
-					L.PushRef(handleToThis);
 					int argsLength = 0;
 					if (args != null && args.Length > 0)
 					{
 						L.PushArray(args);
 						argsLength = args.Length;
 					}
-					L.Call(2 + argsLength, 1);
+					L.Call(1 + argsLength, 1);
 					Api.lua_settop(L, top);
 					return L.ValueAt(-1);
 				}
@@ -353,10 +377,9 @@ namespace lua
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
 			{
 				Api.lua_pushvalue(L, -2);
-				L.PushRef(handleToThis);
 				try
 				{
-					L.Call(2, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{
@@ -395,12 +418,11 @@ namespace lua
 			// get message func	from instance table
 			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
+				Api.lua_pushvalue(L, -2);
 				// stack: func, instance table
-				Api.lua_pushvalue(L, -2); // behaviour table
-				L.PushRef(handleToThis); // this csharp object
 				try
 				{
-					L.Call(2, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{

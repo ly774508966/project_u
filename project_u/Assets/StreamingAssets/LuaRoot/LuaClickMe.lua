@@ -14,7 +14,7 @@ function ClickMe:Method()
 	Debug.Log('ClickMe:Method')
 end
 
-function ClickMe:Awake(behaviour)
+function ClickMe:Awake()
 	self.StaticMethod()
 	self:Method()
 --[[
@@ -26,10 +26,10 @@ function ClickMe:Awake(behaviour)
 --]]
 end
 
-function ClickMe:OnClick(behaviour)
+function ClickMe:OnClick()
 	Debug.Log('OnClick in Lua ' .. self.value)
 	Debug.Log('OnClick in Lua ' .. self.value)
--- [[
+
 	local val = self.value
 	local co = coroutine.create(
 		function() 
@@ -41,8 +41,7 @@ function ClickMe:OnClick(behaviour)
 			Debug.Log('coroutine ends')
 		end)
 	Debug.Log(type(co))
-	behaviour:StartLuaCoroutine(co)
---]]
+	self:StartLuaCoroutine(co)
 end
 
 return ClickMe

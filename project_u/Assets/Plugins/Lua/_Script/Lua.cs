@@ -1694,7 +1694,7 @@ namespace lua
 
 		static System.Reflection.MethodBase MatchMethod(IntPtr L, 
 			Type invokingType, Type type, string methodName, string mangledName, bool invokingStaticMethod,
-			object target, int argStart, int[] luaArgTypes, ref System.Reflection.ParameterInfo[] parameters)
+			ref object target, int argStart, int[] luaArgTypes, ref System.Reflection.ParameterInfo[] parameters)
 		{
 			System.Reflection.MethodBase method;
 			var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
@@ -1739,7 +1739,7 @@ namespace lua
 				if (type != typeof(object))
 				{
 					// search into parent
-					return MatchMethod(L, invokingType, type.BaseType, methodName, mangledName, invokingStaticMethod, target, argStart, luaArgTypes, ref parameters);
+					return MatchMethod(L, invokingType, type.BaseType, methodName, mangledName, invokingStaticMethod, ref target, argStart, luaArgTypes, ref parameters);
 				}
 
 				var additionalMessage = string.Empty;
@@ -1780,6 +1780,29 @@ namespace lua
 				if (Api.lua_rawequal(L, 1, Api.lua_upvalueindex(2)))
 				{
 					invokingStaticMethod = false;
+				}
+				else
+				{
+					// for lua behaviour, check if there is __behaviour in metatable
+					if (1 == Api.lua_getmetatable(L, 1))
+					{
+						Api.lua_rawgeti(L, -1, 1);
+						if (Api.lua_rawequal(L, -1, Api.lua_upvalueindex(2)))
+						{
+							invokingStaticMethod = false;
+						}
+						Api.lua_pop(L, 2);
+					}
+				}
+
+				// adjust args
+				if (invokingStaticMethod)
+				{
+					luaArgTypes = new int[numArgs];
+					argStart = 1;
+				}
+				else
+				{
 					if (numArgs - 1 == 0)
 					{
 						luaArgTypes = luaArgTypes_NoArgs;
@@ -1789,11 +1812,6 @@ namespace lua
 						luaArgTypes = new int[numArgs - 1];
 						argStart = 2;
 					}
-				}
-				else
-				{
-					luaArgTypes = new int[numArgs];
-					argStart = 1;
 				}
 			}
 
@@ -1805,8 +1823,6 @@ namespace lua
 					luaArgTypes[i - argStart] = Api.lua_type(L, i);
 				}
 			}
-
-
 
 			object target = null;
 			System.Type type = null;
@@ -1827,7 +1843,7 @@ namespace lua
 
 			if (method == null)
 			{
-				method = MatchMethod(L, type, type, methodName, mangledName, invokingStaticMethod, target, argStart, luaArgTypes, ref parameters);
+				method = MatchMethod(L, type, type, methodName, mangledName, invokingStaticMethod, ref target, argStart, luaArgTypes, ref parameters);
 			}
 			else
 			{
@@ -2340,7 +2356,7 @@ namespace lua
 
 				foreach (var op in binaryOps)
 				{
-                    Api.lua_pushinteger(L, op.Value);
+					Api.lua_pushinteger(L, op.Value);
 					Api.lua_pushcclosure(L, MetaMethod.MetaBinaryOpFunction, 1);
 					Api.lua_setfield(L, -2, op.Key);
 				}

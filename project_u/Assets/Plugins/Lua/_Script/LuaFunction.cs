@@ -21,6 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+using UnityEngine.Events;
 using System;
 using AOT;
 
@@ -31,45 +32,61 @@ namespace lua
 		Lua L_;
 		int funcRef = Api.LUA_NOREF;
 
-		public static implicit operator System.Action(LuaFunction f)
+		public static implicit operator Action(LuaFunction f)
 		{
 			return ToAction(f);
 		}
 
-		public static System.Action ToAction(LuaFunction f)
+		public static implicit operator UnityAction(LuaFunction f)
+		{
+			return ToUnityAction(f);
+		}
+
+		public static Action ToAction(LuaFunction f)
 		{
 			f = f.Retain();
-			System.Action action = () => {
+			Action action = () => {
 				f.Invoke();
 				f.Dispose();
 			};
 			return action;
 		}
 
-		public static System.Action<T> ToAction<T>(LuaFunction f)
+		public static UnityAction ToUnityAction(LuaFunction f)
 		{
 			f = f.Retain();
-			System.Action<T> action = (arg) => {
+			UnityAction action = () => {
+				f.Invoke();
+				f.Dispose();
+			};
+			return action;
+		}
+
+
+		public static Action<T> ToAction<T>(LuaFunction f)
+		{
+			f = f.Retain();
+			Action<T> action = (arg) => {
 				f.Invoke(null, arg);
 				f.Dispose();
 			};
 			return action;
 		}
 
-		public static System.Action<T1, T2> ToAction<T1, T2>(LuaFunction f)
+		public static Action<T1, T2> ToAction<T1, T2>(LuaFunction f)
 		{
 			f = f.Retain();
-			System.Action<T1, T2> action = (arg1, arg2) => {
+			Action<T1, T2> action = (arg1, arg2) => {
 				f.Invoke(null, arg1, arg2);
 				f.Dispose();
 			};
 			return action;
 		}
 
-		public static System.Action<T1, T2, T3> ToAction<T1, T2, T3>(LuaFunction f)
+		public static Action<T1, T2, T3> ToAction<T1, T2, T3>(LuaFunction f)
 		{
 			f = f.Retain();
-			System.Action<T1, T2, T3> action = (arg1, arg2, arg3) => {
+			Action<T1, T2, T3> action = (arg1, arg2, arg3) => {
 				f.Invoke(null, arg1, arg2, arg3);
 				f.Dispose();
 			};
@@ -90,7 +107,7 @@ namespace lua
 		{
 			if (L_.valid)
 				return L_;
-			throw new System.InvalidOperationException("Lua vm already destroyed.");
+			throw new InvalidOperationException("Lua vm already destroyed.");
 		}
 
 		public LuaFunction Retain()
@@ -216,7 +233,7 @@ namespace lua
 
 		static int LuaDelegateInternal(IntPtr L)
 		{
-			var func = (System.Delegate)Lua.ObjectAtInternal(L, Api.lua_upvalueindex(1));
+			var func = (Delegate)Lua.ObjectAtInternal(L, Api.lua_upvalueindex(1));
 			var numArgs = Api.lua_gettop(L);
 			var refToDelegate = Lua.MakeRefToInternal(L, func);
 			try
@@ -251,7 +268,7 @@ namespace lua
 			return func;
 		}
 
-		public static LuaFunction CreateDelegate(Lua L, System.Delegate func)
+		public static LuaFunction CreateDelegate(Lua L, Delegate func)
 		{
 			L.PushObject(func);
 			Api.lua_pushcclosure(L, LuaDelegate, 1);

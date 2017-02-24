@@ -1122,7 +1122,7 @@ namespace lua
 				if (luaArgType == Api.LUA_TBOOLEAN) return 10;
 				return 5;
 			}
-			else if (type == typeof(LuaFunction) || type == typeof(System.Action))
+			else if (type == typeof(LuaFunction) || type == typeof(System.Action) || type == typeof(UnityEngine.Events.UnityAction))
 			{
 				if (luaArgType == Api.LUA_TFUNCTION) return 10;
 			}
@@ -1338,9 +1338,14 @@ namespace lua
 							t = LuaFunction.MakeRefTo(host, -1);
 							Api.lua_pop(L, 1);
 						}
-                        if (type == typeof(System.Action)) // TODO: check generic parameter type
+						if (type == typeof(System.Action))
 						{
 							actualArgs.SetValue((System.Action)t, idx);
+							t.Dispose(); // unused anymore
+						}
+						else if (type == typeof(UnityEngine.Events.UnityAction))
+						{
+							actualArgs.SetValue((UnityEngine.Events.UnityAction)t, idx);
 							t.Dispose(); // unused anymore
 						}
 						else
@@ -2253,6 +2258,11 @@ namespace lua
 			else if (type == typeof(System.Action))
 			{
 				converted = LuaFunction.ToAction((LuaFunction)value);
+				return true;
+			}
+			else if (type == typeof(UnityEngine.Events.UnityAction))
+			{
+				converted = LuaFunction.ToUnityAction((LuaFunction)value);
 				return true;
 			}
 			converted = null;

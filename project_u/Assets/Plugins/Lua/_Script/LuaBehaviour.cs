@@ -89,6 +89,8 @@ namespace lua
 		}
 
 
+
+
 		public string scriptName;
 #if UNITY_EDITOR
 		[NonSerialized]

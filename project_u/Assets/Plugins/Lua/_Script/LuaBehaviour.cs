@@ -338,7 +338,7 @@ namespace lua
 			}
 		}
 
-		public object InvokeLuaMethod(string method, params object[] args)
+		public object InvokeLuaMethod(string method, object[] args)
 		{
 			if (!scriptLoaded) return null;
 
@@ -352,7 +352,10 @@ namespace lua
 					int argsLength = 0;
 					if (args != null && args.Length > 0)
 					{
-						L.PushArray(args);
+						foreach (var arg in args)
+						{
+							L.PushValue(arg);
+						}
 						argsLength = args.Length;
 					}
 					L.Call(1 + argsLength, 1);

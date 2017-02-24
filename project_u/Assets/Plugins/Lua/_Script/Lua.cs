@@ -1122,7 +1122,7 @@ namespace lua
 				if (luaArgType == Api.LUA_TBOOLEAN) return 10;
 				return 5;
 			}
-			else if (type == typeof(LuaFunction) || type == typeof(System.Action))
+			else if (type == typeof(LuaFunction) || type == typeof(System.Action) || type == typeof(UnityEngine.Events.UnityAction))
 			{
 				if (luaArgType == Api.LUA_TFUNCTION) return 10;
 			}
@@ -1338,9 +1338,14 @@ namespace lua
 							t = LuaFunction.MakeRefTo(host, -1);
 							Api.lua_pop(L, 1);
 						}
-                        if (type == typeof(System.Action)) // TODO: check generic parameter type
+						if (type == typeof(System.Action))
 						{
 							actualArgs.SetValue((System.Action)t, idx);
+							t.Dispose(); // unused anymore
+						}
+						else if (type == typeof(UnityEngine.Events.UnityAction))
+						{
+							actualArgs.SetValue((UnityEngine.Events.UnityAction)t, idx);
 							t.Dispose(); // unused anymore
 						}
 						else
@@ -1692,6 +1697,71 @@ namespace lua
 			}
 		}
 
+		static System.Reflection.MethodBase MatchMethod(IntPtr L, 
+			Type invokingType, Type type, string methodName, string mangledName, bool invokingStaticMethod,
+			ref object target, int argStart, int[] luaArgTypes, ref System.Reflection.ParameterInfo[] parameters)
+		{
+			System.Reflection.MethodBase method;
+			var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+			var score = Int32.MinValue;
+			System.Reflection.MethodBase selected = null;
+			List<Exception> pendingExceptions = null;
+			foreach (var member in members)
+			{
+				Assert(member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
+				var m = (System.Reflection.MethodInfo)member;
+				if (m.IsStatic)
+				{
+					Assert(invokingStaticMethod, string.Format("invoking static method {0} with incorrect syntax.", m.ToString()));
+					target = null;
+				}
+				else
+				{
+					Assert(!invokingStaticMethod, string.Format("invoking non-static method {0} with incorrect syntax.", m.ToString()));
+				}
+				try
+				{
+					MatchingParameters(L, argStart, m, luaArgTypes, ref score, ref selected, ref parameters);
+				}
+				catch (System.Reflection.AmbiguousMatchException e)
+				{
+					throw e;
+				}
+				catch (Exception e)
+				{
+					if (pendingExceptions == null)
+						pendingExceptions = new List<Exception>();
+					pendingExceptions.Add(e);
+				}
+			}
+			method = selected;
+			if (method != null)
+			{
+				CacheMethod(L, invokingType, mangledName, method);
+			}
+			else
+			{
+				if (type != typeof(object))
+				{
+					// search into parent
+					return MatchMethod(L, invokingType, type.BaseType, methodName, mangledName, invokingStaticMethod, ref target, argStart, luaArgTypes, ref parameters);
+				}
+
+				var additionalMessage = string.Empty;
+				if (pendingExceptions != null && pendingExceptions.Count > 0)
+				{
+					var sb = new System.Text.StringBuilder();
+					for (int i = 0; i < pendingExceptions.Count; ++i)
+					{
+						sb.AppendLine(pendingExceptions[i].Message);
+					}
+					additionalMessage = sb.ToString();
+				}
+				throw new Exception(string.Format("no corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
+			}
+			return method;
+		}
+
 		static int InvokeMethodInternal(IntPtr L)
 		{
 			// upvalue 1 --> isInvokingFromClass
@@ -1715,6 +1785,29 @@ namespace lua
 				if (Api.lua_rawequal(L, 1, Api.lua_upvalueindex(2)))
 				{
 					invokingStaticMethod = false;
+				}
+				else
+				{
+					// for lua behaviour, check if there is __behaviour in metatable
+					if (1 == Api.lua_getmetatable(L, 1))
+					{
+						Api.lua_rawgeti(L, -1, 1);
+						if (Api.lua_rawequal(L, -1, Api.lua_upvalueindex(2)))
+						{
+							invokingStaticMethod = false;
+						}
+						Api.lua_pop(L, 2);
+					}
+				}
+
+				// adjust args
+				if (invokingStaticMethod)
+				{
+					luaArgTypes = new int[numArgs];
+					argStart = 1;
+				}
+				else
+				{
 					if (numArgs - 1 == 0)
 					{
 						luaArgTypes = luaArgTypes_NoArgs;
@@ -1724,11 +1817,6 @@ namespace lua
 						luaArgTypes = new int[numArgs - 1];
 						argStart = 2;
 					}
-				}
-				else
-				{
-					luaArgTypes = new int[numArgs];
-					argStart = 1;
 				}
 			}
 
@@ -1740,8 +1828,6 @@ namespace lua
 					luaArgTypes[i - argStart] = Api.lua_type(L, i);
 				}
 			}
-
-
 
 			object target = null;
 			System.Type type = null;
@@ -1762,57 +1848,7 @@ namespace lua
 
 			if (method == null)
 			{
-				var members = type.GetMember(methodName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
-				var score = Int32.MinValue;
-				System.Reflection.MethodBase selected = null;
-				List<Exception> pendingExceptions = null;
-				foreach (var member in members)
-				{
-					Assert(member.MemberType == System.Reflection.MemberTypes.Method, string.Format("{0} is not a Method.", methodName));
-					var m = (System.Reflection.MethodInfo)member;
-					if (m.IsStatic)
-					{
-						Assert(invokingStaticMethod, string.Format("invoking static method {0} with incorrect syntax.", m.ToString()));
-						target = null;
-					}
-					else
-					{
-						Assert(!invokingStaticMethod, string.Format("invoking non-static method {0} with incorrect syntax.", m.ToString()));
-					}
-					try
-					{
-						MatchingParameters(L, argStart, m, luaArgTypes, ref score, ref selected, ref parameters);
-					}
-					catch (System.Reflection.AmbiguousMatchException e)
-					{
-						throw e;
-					}
-					catch (Exception e)
-					{
-						if (pendingExceptions == null)
-							pendingExceptions = new List<Exception>();
-						pendingExceptions.Add(e);
-					}
-				}
-				method = selected;
-				if (method != null)
-				{
-					CacheMethod(L, type, mangledName, method);
-				}
-				else
-				{
-					var additionalMessage = string.Empty;
-					if (pendingExceptions != null && pendingExceptions.Count > 0)
-					{
-						var sb = new System.Text.StringBuilder();
-						for (int i = 0; i < pendingExceptions.Count; ++i)
-						{
-							sb.AppendLine(pendingExceptions[i].Message);
-						}
-						additionalMessage = sb.ToString();
-					}
-					throw new Exception(string.Format("no corresponding csharp method for {0}\n{1}", GetLuaInvokingSigniture(methodName, luaArgTypes), additionalMessage));
-				}
+				method = MatchMethod(L, type, type, methodName, mangledName, invokingStaticMethod, ref target, argStart, luaArgTypes, ref parameters);
 			}
 			else
 			{
@@ -2098,8 +2134,10 @@ namespace lua
 			else
 			{
 				// search into base	class of obj
-				Assert(objType != typeof(object), string.Format("Member {0} not found.", memberName));
-				return GetMember(L, obj, objType.BaseType, memberName);
+				if (objType != typeof(object))
+					return GetMember(L, obj, objType.BaseType, memberName);
+				Api.lua_pushnil(L);
+				return 1;
 			}
 		}
 
@@ -2222,6 +2260,11 @@ namespace lua
 				converted = LuaFunction.ToAction((LuaFunction)value);
 				return true;
 			}
+			else if (type == typeof(UnityEngine.Events.UnityAction))
+			{
+				converted = LuaFunction.ToUnityAction((LuaFunction)value);
+				return true;
+			}
 			converted = null;
 			return false;
 		}
@@ -2325,7 +2368,7 @@ namespace lua
 
 				foreach (var op in binaryOps)
 				{
-                    Api.lua_pushinteger(L, op.Value);
+					Api.lua_pushinteger(L, op.Value);
 					Api.lua_pushcclosure(L, MetaMethod.MetaBinaryOpFunction, 1);
 					Api.lua_setfield(L, -2, op.Key);
 				}

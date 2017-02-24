@@ -32,10 +32,13 @@ namespace lua
 	 * 
 	 *  -- A LuaBehaviour script, MyLuaBehaviour.lua
 	 *  
-	 * 	local MyLuaBehaviour = {}
-	 * 	
+	 *  local MyLuaBehaviour = {
+	 * 		staticValue = 10 -- a `static' variable
+	 *  }
+	 *
 	 *  -- _Init function for new behaviour instance
 	 *  function MyLuaBehaviour._Init(instance) -- notice, it use dot `.' to define _Init function (`static' function)
+	 * 		-- values put in instance table used as self below
 	 * 		instance.value0 = 32
 	 * 		instance.value1 = 'abc'
 	 * 
@@ -46,7 +49,8 @@ namespace lua
 	 *  -- When a new GameObject which has LuaBehaviour component with MyLuaBehaviour.lua attached Awake
 	 *  -- from deserialized data, it will create an empty table as instance of this Lua component (aka behaviour table).
 	 *  -- The instance (behaviour table) is passed to _Init function for initialization. 
-	 *  -- All values set to instance *in _Init function* can be serialized with GameObject. In fact, the function it self is serialized.
+	 *  -- All values set to instance *in _Init function* can be serialized with GameObject. In fact, the function itself 
+	 *  -- is serialized.
 	 *  -- And those values will show in Inspector. Any tweaking on those values also can be serialized as new _Init
 	 *  -- function.
 	 *  -- When Awake from deserialized data, _Init function is loaded and 'hides' the original _Init function. 
@@ -55,13 +59,14 @@ namespace lua
 	 * 
 	 * 
 	 *  -- called at the end of host LuaBehaviour.Awake. 
-	 *  function MyLuaBehaviour:Awake(instance) -- behaviour table
+	 *  function MyLuaBehaviour:Awake()
 	 * 		-- awake
-	 * 		instance.some_value = self:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
+	 * 		self.some_value = self:FunctionFromCsharp() -- calling function defined in C# side and store return value to behaviour table.
+	 * 		MyLuaBehaviour.staticValue = 20
 	 *  end
 	 * 
 	 * 	-- called at LuaBehaviour.Update
-	 *  function MyLuaBehaviour:Update(instance)
+	 *  function MyLuaBehaviour:Update()
 	 * 		-- update
 	 *  end
 	 * 
@@ -82,6 +87,8 @@ namespace lua
 			}
 			L = luaVm;
 		}
+
+
 
 
 		public string scriptName;
@@ -148,6 +155,19 @@ namespace lua
 		}
 		int luaBehaviourRef = Api.LUA_NOREF;
 
+		public void LoadScript(string scriptName)
+		{
+			if (!scriptLoaded)
+			{
+				this.scriptName = scriptName;
+				Awake();
+			}
+			else
+			{
+				Debug.LogWarning("script already loaded.");
+			}
+		}
+
 		void Awake()
 		{
 			if (L == null)
@@ -165,28 +185,50 @@ namespace lua
 			// make	instance
 			handleToThis = L.MakeRefTo(this);
 
-			Api.lua_newtable(L); // instance behaviour table
-
-			// ref instance behaviour table
+			Api.lua_newtable(L); 
+			// stack: instance table
 			luaBehaviourRef = L.MakeRefAt(-1);
 
-		
 			// meta
-			Api.lua_createtable(L, 0, 1);
+			Api.lua_createtable(L, 1, 1);
+			// stack: instance table, meta
+
+			L.PushRef(handleToThis);
+			Api.lua_rawseti(L, -2, 1); // meta[1] = behaviour (this)
+
+			// TODO: can be	opt, each Script take its own meta for LuaBehaviour
 			// load	class
 			Api.luaL_requiref(L, scriptName, Lua.LoadScript1, 0);
+			// stack: instance table, meta, script table
 
 			if (Api.lua_istable(L, -1)) // set metatable and bind messages
 			{
-				// stack: behaviour table, meta, script
-				Api.lua_setfield(L, -2, "__index"); // meta.__index = script
-													// stack: behaviour table, meta
+				// stack: behaviour table, meta, script table
+				L.DoString("return function(be, script)\n" +
+							"  return function(t, key)\n" +
+							"    local val = script[key]\n"	+
+							"    if not val then val = be[key] end\n" +
+							"    return val\n" +
+							"  end\n" +
+							"end", 1, "LuaBehaviour_GetMetaIndexFunction");
+				L.PushRef(handleToThis);
+				Api.lua_pushvalue(L, -3);
+				L.Call(2, 1);
+				// stack: instance table, meta, script table, index function
+				Api.lua_setfield(L, -3, "__index");
+				// stack: instance table, meta, script table
+				Api.lua_insert(L, -3);
+				// stack: script table, instance table, meta
 				Api.lua_setmetatable(L, -2);
+				// stack: script table, instance table
 
 				// check message
 				for (Message i = Message.Awake; i < Message._Count; ++i)
 				{
-					Api.lua_getfield(L, -1, i.ToString());
+					Api.lua_pushstring(L, i.ToString());
+					// stack: script table, instance table, key
+					Api.lua_rawget(L, -3);
+					// stack: script table, instance table, function?
 					if (Api.lua_isfunction(L, -1))
 					{
 						messageFlag = messageFlag | MakeFlag(i);
@@ -196,6 +238,7 @@ namespace lua
 					{
 						Api.lua_pop(L, 1); // pop field
 					}
+					// stack: script table,	instance table
 				}
 
 				// choose script
@@ -203,22 +246,22 @@ namespace lua
 				var componentType = Type.GetType("lua.LuaInstanceBehaviour" + flag.ToString());
 				instanceBehaviour = gameObject.AddComponent(componentType) as LuaInstanceBehaviour0;
 
-				Api.lua_pop(L, 1); // pop behaviour table
+				Api.lua_pop(L, 2); // pop instance table, script table
 
 				scriptLoaded_ = true;
-
 			}
 			else
 			{
-				Api.lua_pop(L, 3); // pop behaviour table, meta and result of requiref
+				Api.lua_pop(L, 3); // pop instance table, meta, script table
 			}
 
+			// stack: (*empty)
 
 			if (scriptLoaded_)
 			{
 				// load	_Init from serialized version
-				LoadInitFuncToBehaviourTable(L);
-				RunInitFuncOnBehaviourTable(L);
+				LoadInitFuncToInstanceTable(L);
+				RunInitFuncOnInstanceTable(L);
 
 				// Awake Lua script
 				instanceBehaviour.SetLuaBehaviour(this);
@@ -229,7 +272,7 @@ namespace lua
 			}
 		}
 
-		void RunInitFuncOnBehaviourTable(Lua L)
+		void RunInitFuncOnInstanceTable(Lua L)
 		{
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			// Behaviour._Init hides Script._Init
@@ -297,26 +340,27 @@ namespace lua
 			}
 		}
 
-		public object InvokeLuaMethod(string method, params object[] args)
+		public object InvokeLuaMethod(string method, object[] args)
 		{
 			if (!scriptLoaded) return null;
 
 			var top = Api.lua_gettop(L);
 			try
 			{
-
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 				if (Api.lua_getfield(L, -1, method) == Api.LUA_TFUNCTION)
 				{
-					L.PushRef(handleToThis);
-					Api.lua_pushvalue(L, -3);
+					Api.lua_pushvalue(L, -2);
 					int argsLength = 0;
 					if (args != null && args.Length > 0)
 					{
-						L.PushArray(args);
+						foreach (var arg in args)
+						{
+							L.PushValue(arg);
+						}
 						argsLength = args.Length;
 					}
-					L.Call(2 + argsLength, 1);
+					L.Call(1 + argsLength, 1);
 					Api.lua_settop(L, top);
 					return L.ValueAt(-1);
 				}
@@ -337,11 +381,10 @@ namespace lua
 			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
 			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
 			{
-				L.PushRef(handleToThis);
-				Api.lua_pushvalue(L, -3);
+				Api.lua_pushvalue(L, -2);
 				try
 				{
-					L.Call(2, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{
@@ -380,12 +423,11 @@ namespace lua
 			// get message func	from instance table
 			if (Api.lua_rawgeti(L, -1, messageRef[(int)message]) == Api.LUA_TFUNCTION)
 			{
+				Api.lua_pushvalue(L, -2);
 				// stack: func, instance table
-				L.PushRef(handleToThis); // this csharp object
-				Api.lua_pushvalue(L, -3); // behaviour table
 				try
 				{
-					L.Call(2, 0);
+					L.Call(1, 0);
 				}
 				catch (Exception e)
 				{
@@ -397,14 +439,14 @@ namespace lua
 
 		[SerializeField]
 		[HideInInspector]
-		byte[] _Init;
-		bool LoadInitFuncToBehaviourTable(Lua L)
+		byte[] _InitChunk;
+		bool LoadInitFuncToInstanceTable(Lua L)
 		{
-			if (_Init == null || _Init.Length == 0) return false;
+			if (_InitChunk == null || _InitChunk.Length == 0) return false;
 			try
 			{
 				Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
-				L.LoadChunk(_Init, scriptName + "_Init");
+				L.LoadChunk(_InitChunk, scriptName + "_Init");
 				L.Call(0, 1); // run loaded chunk
 				Api.lua_setfield(L, -2, "_Init");
 				Api.lua_pop(L, 1);  // pop behaviour table
@@ -453,23 +495,23 @@ namespace lua
 
 		public bool IsInitFuncDumped()
 		{
-			return !string.IsNullOrEmpty(scriptName) && _Init != null && _Init.Length > 0;
+			return !string.IsNullOrEmpty(scriptName) && _InitChunk != null && _InitChunk.Length > 0;
 		}
 
 		public byte[] GetInitChunk()
 		{
-			return _Init;
+			return _InitChunk;
 		}
 
 		public void SetInitChunk(byte[] chunk)
 		{
-			_Init = chunk;
+			_InitChunk = chunk;
 			if (Application.isPlaying)
 			{
 				if (scriptLoaded)
 				{
-					LoadInitFuncToBehaviourTable(L);
-					RunInitFuncOnBehaviourTable(L);
+					LoadInitFuncToInstanceTable(L);
+					RunInitFuncOnInstanceTable(L);
 				}
 			}
 		}

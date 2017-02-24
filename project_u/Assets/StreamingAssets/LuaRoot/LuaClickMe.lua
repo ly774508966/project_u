@@ -7,7 +7,16 @@ function ClickMe._Init(instance)
     instance.value = 10
 end
 
-function ClickMe:Awake(instance)
+function ClickMe.StaticMethod()
+	Debug.Log('ClickMe.StaticMethod')
+end
+function ClickMe:Method()
+	Debug.Log('ClickMe:Method')
+end
+
+function ClickMe:Awake()
+	self.StaticMethod()
+	self:Method()
 --[[
 	local btn = self:GetComponent(Button)
 	btn.onClick:AddListener(
@@ -17,11 +26,11 @@ function ClickMe:Awake(instance)
 --]]
 end
 
-function ClickMe:OnClick(instance)
-	Debug.Log('OnClick in Lua ' .. instance.value)
-	Debug.Log('OnClick in Lua ' .. instance.value)
--- [[
-	local val = instance.value
+function ClickMe:OnClick()
+	Debug.Log('OnClick in Lua ' .. self.value)
+	Debug.Log('OnClick in Lua ' .. self.value)
+
+	local val = self.value
 	local co = coroutine.create(
 		function() 
 			while val >= 0 do
@@ -33,7 +42,6 @@ function ClickMe:OnClick(instance)
 		end)
 	Debug.Log(type(co))
 	self:StartLuaCoroutine(co)
---]]
 end
 
 return ClickMe

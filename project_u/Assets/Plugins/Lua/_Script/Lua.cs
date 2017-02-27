@@ -285,6 +285,9 @@ namespace lua
 				Api.lua_pop(L, 2); // pop those
 
 
+
+
+
 				LuaAdditionalFunctions.Open(this);
 			}
 			catch (Exception e)
@@ -499,11 +502,32 @@ namespace lua
 		}
 
 		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
+		static int DoFile(IntPtr L)
+		{
+			var top = Api.lua_gettop(L);
+			var scriptName = Api.lua_tostring(L, 1);
+			try
+			{
+				string scriptPath = string.Empty;
+				LoadChunkFromFile(L, scriptName, out scriptPath);
+				CallInternal(L, 0, Api.LUA_MULTRET);
+				return Api.lua_gettop(L) - top;
+			}
+			catch (Exception e)
+			{
+				Api.lua_settop(L, top);
+				Api.lua_pushstring(L, e.Message);
+			}
+			return 1;
+		}
+
+		[MonoPInvokeCallback(typeof(Api.lua_CFunction))]
 		static int OpenCsharpLib(IntPtr L)
 		{
 			var regs = new Api.luaL_Reg[]
 			{
 				new Api.luaL_Reg("import", Import),
+				new Api.luaL_Reg("dofile", DoFile),
 				new Api.luaL_Reg("_break", _Break),
 			};
 			Api.luaL_newlib(L, regs);

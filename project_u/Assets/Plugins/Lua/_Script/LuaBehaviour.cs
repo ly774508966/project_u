@@ -338,16 +338,12 @@ namespace lua
 			{
 				for (int i = 0; i < messageRef.Length; ++i)
 				{
-					var r = messageRef[i];
-					if (r != Api.LUA_NOREF)
-					{
-						Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, r);
-					}
-					messageRef[i] = Api.LUA_NOREF;
+					messageRef[i] = Api.LUA_NOREF; // since referenced in luaBehaviourRef, here is no need to unref
 				}
 				messageFlag = 0;
 
 				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+
 				if (handleToThis != Api.LUA_NOREF)
 					L.Unref(handleToThis);
 				luaBehaviourRef = Api.LUA_NOREF;

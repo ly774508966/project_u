@@ -180,6 +180,10 @@ namespace lua.hotpatch
 				remove.Dispose();
 			if (patch != null)
 				patch.Dispose();
+
+			find = null;
+			remove = null;
+			patch = null;
 		}
 
 		public static void Patch(string signature, string patchScript)

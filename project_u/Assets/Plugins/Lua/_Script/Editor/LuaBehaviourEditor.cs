@@ -288,16 +288,21 @@ namespace lua
 		void OnDisable()
 		{
 			Undo.undoRedoPerformed -= HandleUndoRedo;
+			L.Dispose();
+			L = null;
 		}
 
 		// if _Init func changed and also dumped, merge this two parts and dump again
 		void OnInspectorGUI_CheckReimported()
 		{
-			var lb = target as LuaBehaviour;
-			if (WatchingLuaSources.IsReimported(lb.scriptPath))
+			if (!Application.isPlaying)
 			{
-				Reload();
-				WatchingLuaSources.SetProcessed(lb.scriptPath);
+				var lb = target as LuaBehaviour;
+				if (WatchingLuaSources.IsReimported(lb.scriptPath))
+				{
+					Reload();
+					WatchingLuaSources.SetProcessed(lb.scriptPath);
+				}
 			}
 		}
 

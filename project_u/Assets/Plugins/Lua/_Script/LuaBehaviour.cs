@@ -96,6 +96,7 @@ namespace lua
 			{
 				obj.BroadcastMessage("UnloadLuaScript", SendMessageOptions.DontRequireReceiver);
 			}
+			L = null;
 		}
 
 		public static void ReloadAll()
@@ -334,7 +335,7 @@ namespace lua
 		void OnDestroy()
 		{
 			SendLuaMessage(Message.OnDestroy);
-			if (L.valid)
+			if (L != null && L.valid)
 			{
 				for (int i = 0; i < messageRef.Length; ++i)
 				{
@@ -430,6 +431,8 @@ namespace lua
 
 		public void SendLuaMessage(Message message)
 		{
+			if (L == null) return;
+
 			if (!scriptLoaded) return;
 
 			if ((messageFlag & MakeFlag(message)) == 0) return; // no message defined

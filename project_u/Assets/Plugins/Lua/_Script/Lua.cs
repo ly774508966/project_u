@@ -343,7 +343,13 @@ namespace lua
 
 		public void Dispose()
 		{
+			if (L == IntPtr.Zero)
+				return;
+
 			hotpatch.LuaHotPatchLoader.Close();
+
+			addPath.Dispose();
+			addPath = null;
 
 			checkError.Dispose();
 			checkError = null;
@@ -1961,7 +1967,6 @@ namespace lua
 			{
 				throw new Exception(string.Format("Cannot import type {0}", typename));
 			}
-			Config.Log(string.Format("{0} imported.", typename));
 			if (PushObjectInternal(L, type, classMetaTable) == 1) // typhe object in ImportInternal_ is cached by luaL_requiref
 			{
 				Api.lua_getmetatable(L, -1); // append info in metatable
@@ -2386,7 +2391,7 @@ namespace lua
 		{
 			if (Api.luaL_newmetatable(L, metaTableName) == 1)
 			{
-				Config.Log(string.Format("Registering object meta table {0} ... ", metaTableName));
+				// Config.Log(string.Format("Registering object meta table {0} ... ", metaTableName));
 				Api.lua_pushboolean(L, false);
 				Api.lua_rawseti(L, -2, 1); // isClassObject = false
 

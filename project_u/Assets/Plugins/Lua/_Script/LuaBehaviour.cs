@@ -81,6 +81,7 @@ namespace lua
 		static Lua L;
 		public static void SetLua(Lua luaVm)
 		{
+			if (luaVm == L) return;
 			if (L != null)
 			{
 				Debug.LogWarning("Lua state chagned, LuaBehaviour will run in new state.");
@@ -88,8 +89,24 @@ namespace lua
 			L = luaVm;
 		}
 
+		public static void UnloadAll()
+		{
+			var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+			foreach (var obj in rootObjects)
+			{
+				obj.BroadcastMessage("UnloadLuaScript", SendMessageOptions.DontRequireReceiver);
+			}
+			L = null;
+		}
 
-
+		public static void ReloadAll()
+		{
+			var rootObjects = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+			foreach (var obj in rootObjects)
+			{
+				obj.BroadcastMessage("ReloadLuaScript", SendMessageOptions.DontRequireReceiver);
+			}
+		}
 
 		public string scriptName;
 #if UNITY_EDITOR
@@ -318,20 +335,16 @@ namespace lua
 		void OnDestroy()
 		{
 			SendLuaMessage(Message.OnDestroy);
-			if (L.valid)
+			if (L != null && L.valid)
 			{
 				for (int i = 0; i < messageRef.Length; ++i)
 				{
-					var r = messageRef[i];
-					if (r != Api.LUA_NOREF)
-					{
-						Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, r);
-					}
-					messageRef[i] = Api.LUA_NOREF;
+					messageRef[i] = Api.LUA_NOREF; // since referenced in luaBehaviourRef, here is no need to unref
 				}
 				messageFlag = 0;
 
 				Api.luaL_unref(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+
 				if (handleToThis != Api.LUA_NOREF)
 					L.Unref(handleToThis);
 				luaBehaviourRef = Api.LUA_NOREF;
@@ -343,6 +356,8 @@ namespace lua
 		public object InvokeLuaMethod(string method, object[] args)
 		{
 			if (!scriptLoaded) return null;
+
+			Debug.Log("InvokeLuaMethod " + method);
 
 			var top = Api.lua_gettop(L);
 			try
@@ -361,8 +376,9 @@ namespace lua
 						argsLength = args.Length;
 					}
 					L.Call(1 + argsLength, 1);
+					var ret = L.ValueAt(-1);
 					Api.lua_settop(L, top);
-					return L.ValueAt(-1);
+					return ret;
 				}
 				Api.lua_settop(L, top);
 			}
@@ -415,6 +431,8 @@ namespace lua
 
 		public void SendLuaMessage(Message message)
 		{
+			if (L == null) return;
+
 			if (!scriptLoaded) return;
 
 			if ((messageFlag & MakeFlag(message)) == 0) return; // no message defined
@@ -478,6 +496,24 @@ namespace lua
 			return null;
 		}
 
+		// https://docs.unity3d.com/Manual/ExecutionOrder.html
+		void UnloadLuaScript()
+		{
+			L.DoString("package.loaded['" + scriptName + "'] = nil");
+			StopAllCoroutines();
+			OnDisable();
+			OnDestroy();
+			Destroy(instanceBehaviour);
+			instanceBehaviour = null;
+		}
+
+		void ReloadLuaScript()
+		{
+			Awake();
+			OnEnable();
+			Start();
+		}
+
 
 #if UNITY_EDITOR
 		public static System.Action debuggeePoll;
@@ -520,22 +556,8 @@ namespace lua
 		{
 			if (Application.isPlaying)
 			{
-				using (var removeLoaded = LuaFunction.NewFunction(
-					L,
-					"function()\n" +
-					" package.loaded['" + scriptName + "'] = nil\n" +
-					"end"))
-				{
-					removeLoaded.Invoke();
-					// https://docs.unity3d.com/Manual/ExecutionOrder.html
-					OnDisable();
-					OnDestroy();
-					Destroy(instanceBehaviour);
-					instanceBehaviour = null;
-					Awake();
-					OnEnable();
-					Start();
-				}
+				UnloadLuaScript();
+				ReloadLuaScript();
 			}
 		}
 #endif

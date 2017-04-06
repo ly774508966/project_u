@@ -28,7 +28,6 @@ namespace ui
 {
 	public class EmojiConfig : ScriptableObject
 	{
-		public Material material;
 		public Texture texture;
 		public string[] names;
 		public Rect[] rects;

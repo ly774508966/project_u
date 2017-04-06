@@ -343,7 +343,7 @@ MonoBehaviour:
   scriptName: LuaClickMe
   keys: []
   gameObjects: []
-  _Init: 72657475726e2066756e6374696f6e202869290d0a09692e76616c7565203d2038320d0a656e640d0a
+  _InitChunk: 
 --- !u!1 &478987130
 GameObject:
   m_ObjectHideFlags: 0
@@ -501,7 +501,7 @@ MonoBehaviour:
   - MyObject
   gameObjects:
   - {fileID: 1610507446}
-  _Init: 72657475726e2066756e6374696f6e202869290d0a096c6f63616c205f30203d206373686172702e696d706f72742827556e697479456e67696e652e566563746f72332c20556e697479456e67696e652c2056657273696f6e3d302e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d6e756c6c27290d0a09692e616e6f7468657256616c7565203d205f3028362e302c20352e302c20362e30290d0a09692e616e6f7468657256616c756532203d205f3028342e302c20352e302c20362e30290d0a09692e616e6f7468657256616c756535203d205f3028342e302c20352e302c20362e30290d0a09692e616e6f7468657256616c756536203d205f3028342e302c20352e302c20362e30290d0a09692e616e6f7468657256616c756537203d205f3028342e302c20352e302c20362e30290d0a096c6f63616c205f35203d206373686172702e696d706f72742827556e697479456e67696e652e436f6c6f722c20556e697479456e67696e652c2056657273696f6e3d302e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d6e756c6c27290d0a09692e636f6c6f72203d205f3528312c20312c20312c2031290d0a09692e6e6577436f6c6f72203d205f3528312c20302c20302c2031290d0a09692e76616c756530203d2033320d0a09692e76616c756531203d202768656c6c6f270d0a09692e76616c756532203d205f3028312e302c20322e302c20332e30290d0a656e640d0a
+  _InitChunk: 
 --- !u!4 &1052908789
 Transform:
   m_ObjectHideFlags: 0
@@ -582,7 +582,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Button
+  m_Text: Buttonssss
 --- !u!222 &1382614907
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -741,6 +741,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_Children:
   - {fileID: 221079279}
+  - {fileID: 1695995100}
   m_Father: {fileID: 78473291}
   m_RootOrder: 0
   m_AnchorMin: {x: 0, y: 0}
@@ -804,3 +805,78 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!1 &1695995099
+GameObject:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  serializedVersion: 4
+  m_Component:
+  - 224: {fileID: 1695995100}
+  - 222: {fileID: 1695995102}
+  - 114: {fileID: 1695995101}
+  m_Layer: 0
+  m_Name: EmojiText
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1695995100
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 1695995099}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_Children: []
+  m_Father: {fileID: 1628361170}
+  m_RootOrder: 1
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 40, y: -167}
+  m_SizeDelta: {x: 224, y: 179}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1695995101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 1695995099}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c43b1c6c7fc5e454e9b43891d8f88ea6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+    m_TypeName: UnityEngine.UI.MaskableGraphic+CullStateChangedEvent, UnityEngine.UI,
+      Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+  m_FontData:
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_FontSize: 36
+    m_FontStyle: 0
+    m_BestFit: 0
+    m_MinSize: 2
+    m_MaxSize: 60
+    m_Alignment: 0
+    m_AlignByGeometry: 0
+    m_RichText: 1
+    m_HorizontalOverflow: 0
+    m_VerticalOverflow: 0
+    m_LineSpacing: 1
+  m_Text: "\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744"
+  config: {fileID: 11400000, guid: 5e67cd84eaf3c214f9a984e64cbed88c, type: 2}
+--- !u!222 &1695995102
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 1695995099}

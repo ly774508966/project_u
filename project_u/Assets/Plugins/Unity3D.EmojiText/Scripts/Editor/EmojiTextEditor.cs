@@ -33,6 +33,7 @@ namespace ui
 		GUIContent lbEmoji;
 
 		SerializedProperty propConfig;
+		SerializedProperty propHrefColor;
 
 		protected override void OnEnable()
 		{
@@ -40,7 +41,8 @@ namespace ui
 			lbEmoji = new GUIContent("Emoji");
 
 			propConfig = serializedObject.FindProperty("config");
-		}
+			propHrefColor = serializedObject.FindProperty("hrefColor");
+        }
 
 		public override void OnInspectorGUI()
 		{
@@ -60,6 +62,8 @@ namespace ui
 					serializedObject.ApplyModifiedProperties();
 				}
 			}
+			EditorGUILayout.PropertyField(propHrefColor);
+			serializedObject.ApplyModifiedProperties();
 			--EditorGUI.indentLevel;
 		}
 

@@ -26,12 +26,16 @@ SOFTWARE.
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using UnityEngine.EventSystems;
+using System;
 
 namespace ui
 {
-	public class EmojiText : Text
+	public class EmojiText : Text, IPointerClickHandler
 	{
 		public EmojiConfig config;
+		public Color hrefColor = Color.blue;
 
 		private static char placeHolder = 'M';
 
@@ -39,7 +43,6 @@ namespace ui
 		{
 			public int pos;
 			public int emoji;
-
 			public PosStringTuple(int p, int s)
 			{
 				this.pos = p;
@@ -47,6 +50,24 @@ namespace ui
 			}
 		}
 		List<PosStringTuple> emojiReplacements = new List<PosStringTuple>();
+
+		struct PosHerfTuple
+		{
+			public int start;
+			public int end;
+			public string href;
+
+			public PosHerfTuple(int s, int e, string href)
+			{
+				start = s;
+				end = e;
+				this.href = href;
+			}
+		}
+		List<PosHerfTuple> hrefReplacements = new List<PosHerfTuple>();
+
+		public delegate void OnHref(string href);
+		public event OnHref onHref;
 
 		public string rawText
 		{
@@ -60,7 +81,7 @@ namespace ui
 		{
 			get
 			{
-				return UpdateEmojiReplacements(base.text);
+				return UpdateReplacements(base.text);
 			}
 			set
 			{
@@ -91,6 +112,60 @@ namespace ui
 				emojiCanvasRenderer = null;
 			}
 			base.OnDestroy();
+		}
+
+		protected override void OnDisable()
+		{
+			base.OnDisable();
+			if (emojiCanvasRenderer != null)
+				emojiCanvasRenderer.Clear();
+        }
+
+		string UpdateReplacements(string inputString)
+		{
+			hrefReplacements.Clear();
+			var hrefReplaced = UpdateHrefReplacements(inputString);
+			return UpdateEmojiReplacements(hrefReplaced);
+		}
+
+		readonly static Regex hrefMatcher = new Regex(@"\[([^\]]+)\]\(([^\]]+)\)");
+
+		string UpdateHrefReplacements(string inputString)
+		{
+			var match = hrefMatcher.Match(inputString);
+			if (match != null && match.Success)
+			{
+				var processed = inputString.Replace(match.Groups[0].ToString(), match.Groups[1].ToString());
+				var start = match.Groups[0].Index;
+				var end = start + match.Groups[1].Length;
+				hrefReplacements.Add(new PosHerfTuple(start, end, match.Groups[2].ToString()));
+				return UpdateHrefReplacements(processed);
+			}
+			return inputString;
+		}
+
+		void UpdateHrefPosTuples(int index, int count)
+		{
+			if (count > 1)
+			{
+				for (int i = 0; i < hrefReplacements.Count; ++i)
+				{
+					var h = hrefReplacements[i];
+					if (index >= h.start)
+					{
+						// replace h and the rest
+						h.end -= count;
+						hrefReplacements[i] = h;
+						for (int j = i + 1; j < hrefReplacements.Count; ++j)
+						{
+							var r = hrefReplacements[i];
+							r.start -= count;
+							r.end -= count;
+							hrefReplacements[j] = r;
+						}
+					}
+				}
+			}
 		}
 
 		string UpdateEmojiReplacements(string inputString)
@@ -125,6 +200,7 @@ namespace ui
 						sb.Append(placeHolder);
 						emojiReplacements.Add(new PosStringTuple(sb.Length - 1, emojiIndex));
 						i += 4;
+						UpdateHrefPosTuples(sb.Length - 1, 4);
 					}
 					else if (config.map.TryGetValue(doubleChar, out emojiIndex))
 					{
@@ -132,6 +208,7 @@ namespace ui
 						sb.Append(placeHolder);
 						emojiReplacements.Add(new PosStringTuple(sb.Length - 1, emojiIndex));
 						i += 2;
+						UpdateHrefPosTuples(sb.Length - 1, 2);
 					}
 					else if (config.map.TryGetValue(singleChar, out emojiIndex))
 					{
@@ -155,6 +232,8 @@ namespace ui
 
 		readonly static VertexHelper emojiVh = new VertexHelper();
 
+		List<Vector3> hrefVh = new List<Vector3>();
+
 		static Mesh emojiWorkMesh_;
 		static Mesh emojiWorkMesh
 		{
@@ -169,7 +248,6 @@ namespace ui
 				return emojiWorkMesh_;
 			}
 		}
-
 
 		protected override void OnPopulateMesh(VertexHelper toFill)
 		{
@@ -199,6 +277,29 @@ namespace ui
 					emojiVh.AddUIVertexQuad(tempVerts);
 				}
 			}
+
+			hrefVh.Clear();
+			for (int i = 0; i < hrefReplacements.Count; ++i)
+			{
+				var h = hrefReplacements[i];
+				for (int j = h.start; j < h.end; ++j)
+				{
+					var baseIndex = j * 4;
+					if (baseIndex <= toFill.currentVertCount - 4)
+					{
+						for (int k = 0; k < 4; ++k)
+						{
+							toFill.PopulateUIVertex(ref tempVert, baseIndex + k);
+							tempVerts[k] = tempVert;
+							tempVert.color = hrefColor;
+							toFill.SetUIVertex(tempVert, baseIndex + k);
+						}
+						hrefVh.Add(tempVerts[0].position);
+						hrefVh.Add(tempVerts[1].position);
+						hrefVh.Add(tempVerts[2].position);
+					}
+				}
+			}
 		}
 
 		protected override void UpdateGeometry()
@@ -214,17 +315,57 @@ namespace ui
 		protected override void UpdateMaterial()
 		{
 			base.UpdateMaterial();
-			if (!IsActive())
-				return;
-			if (emojiCanvasRenderer != null)
+			if (IsActive())
 			{
-				emojiCanvasRenderer.materialCount = 1;
-				emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
-				emojiCanvasRenderer.SetTexture(config.texture);
+				if (emojiCanvasRenderer != null)
+				{
+					emojiCanvasRenderer.materialCount = 1;
+					emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
+					emojiCanvasRenderer.SetTexture(config.texture);
+				}
 			}
 		}
 
+		protected virtual void RaycastOnHrefs(Vector2 sp, Camera eventCamera)
+		{
+			if (hrefReplacements.Count > 0)
+			{
+				Vector2 local;
+				RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, sp, eventCamera, out local);
 
+				var hrefStartIndex = 0;
+				for (int i = 0; i < hrefReplacements.Count; ++i)
+				{
+					var h = hrefReplacements[i];
+					var count = h.end - h.start;
+					for (int j = 0; j < count; ++j)
+					{
+						var baseIndex = (hrefStartIndex + j) * 3;
+						var v0 = hrefVh[baseIndex];
+						var v1 = hrefVh[baseIndex + 1];
+						var v2 = hrefVh[baseIndex + 2];
+						if (local.x < v0.x || local.x > v1.x)
+						{
+							continue;
+						}
+						if (local.y > v0.y || local.y < v2.y)
+						{
+							continue;
+						}
+						if (onHref != null)
+						{
+							onHref(h.href);
+						}
+					}
+					hrefStartIndex += count;
+				}
 
+			}
+		}
+
+		public void OnPointerClick(PointerEventData eventData)
+		{
+			RaycastOnHrefs(eventData.position, null);
+		}
 	}
 }

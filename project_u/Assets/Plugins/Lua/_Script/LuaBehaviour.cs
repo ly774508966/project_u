@@ -390,6 +390,27 @@ namespace lua
 			return null;
 		}
 
+		public void SendLuaMessage(string message, string parameter)
+		{
+			if (!scriptLoaded) return;
+
+			Api.lua_rawgeti(L, Api.LUA_REGISTRYINDEX, luaBehaviourRef);
+			if (Api.lua_getfield(L, -1, message) == Api.LUA_TFUNCTION)
+			{
+				Api.lua_pushvalue(L, -2);
+				Api.lua_pushstring(L, parameter);
+				try
+				{
+					L.Call(2, 0);
+				}
+				catch (Exception e)
+				{
+					Debug.LogErrorFormat("Invoke {0}.{1} failed: {2}", scriptName, message, e.Message);
+				}
+			}
+			Api.lua_pop(L, 1); // pop behaviour table
+		}
+
 		public void SendLuaMessage(string message)
 		{
 			if (!scriptLoaded) return;

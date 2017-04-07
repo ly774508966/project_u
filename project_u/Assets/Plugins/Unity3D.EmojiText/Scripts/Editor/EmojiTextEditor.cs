@@ -33,6 +33,10 @@ namespace ui
 		GUIContent lbEmoji;
 
 		SerializedProperty propConfig;
+		SerializedProperty propHrefColor;
+		SerializedProperty propHrefOnClickedEventName;
+		SerializedProperty propHrefOnClickedEvent;
+
 
 		protected override void OnEnable()
 		{
@@ -40,6 +44,9 @@ namespace ui
 			lbEmoji = new GUIContent("Emoji");
 
 			propConfig = serializedObject.FindProperty("config");
+			propHrefColor = serializedObject.FindProperty("hrefColor");
+			propHrefOnClickedEventName = serializedObject.FindProperty("hrefOnClickedEventName");
+			propHrefOnClickedEvent = serializedObject.FindProperty("hrefOnClickedEvent");
 		}
 
 		public override void OnInspectorGUI()
@@ -60,6 +67,10 @@ namespace ui
 					serializedObject.ApplyModifiedProperties();
 				}
 			}
+			EditorGUILayout.PropertyField(propHrefColor);
+			EditorGUILayout.PropertyField(propHrefOnClickedEventName);
+            EditorGUILayout.PropertyField(propHrefOnClickedEvent);
+			serializedObject.ApplyModifiedProperties();
 			--EditorGUI.indentLevel;
 		}
 

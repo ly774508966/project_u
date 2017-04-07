@@ -835,11 +835,11 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 1628361170}
   m_RootOrder: 1
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 40, y: -167}
-  m_SizeDelta: {x: 224, y: 179}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 122, y: -860}
+  m_SizeDelta: {x: 285, y: 128}
+  m_Pivot: {x: 0, y: 1}
 --- !u!114 &1695995101
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -872,8 +872,26 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u3299\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744\u2744"
+  m_Text: "[ttt](link_1) [fff](link_2) [\u3297\u3297\u3297](link_3)"
   config: {fileID: 11400000, guid: 5e67cd84eaf3c214f9a984e64cbed88c, type: 2}
+  hrefColor: {r: 0, g: 0, b: 1, a: 1}
+  hrefOnClickedEvent:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 221079283}
+        m_MethodName: SendLuaMessage
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: OnEmojiHrefClicked
+          m_BoolArgument: 0
+        m_CallState: 2
+    m_TypeName: ui.EmojiText+HrefClickedEvent, Assembly-CSharp-firstpass, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+  hrefOnClickedEventName: OnEmojiHrefClicked
 --- !u!222 &1695995102
 CanvasRenderer:
   m_ObjectHideFlags: 0

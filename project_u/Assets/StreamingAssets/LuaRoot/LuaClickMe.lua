@@ -44,4 +44,8 @@ function ClickMe:OnClick()
 	self:StartLuaCoroutine(co)
 end
 
+function ClickMe:OnEmojiHrefClicked(href)
+	Debug.Log("OnEmojiHrefClicked " .. tostring(href))
+end
+
 return ClickMe

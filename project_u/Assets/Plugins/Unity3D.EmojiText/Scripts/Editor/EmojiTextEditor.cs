@@ -34,6 +34,9 @@ namespace ui
 
 		SerializedProperty propConfig;
 		SerializedProperty propHrefColor;
+		SerializedProperty propHrefOnClickedEventName;
+		SerializedProperty propHrefOnClickedEvent;
+
 
 		protected override void OnEnable()
 		{
@@ -42,7 +45,9 @@ namespace ui
 
 			propConfig = serializedObject.FindProperty("config");
 			propHrefColor = serializedObject.FindProperty("hrefColor");
-        }
+			propHrefOnClickedEventName = serializedObject.FindProperty("hrefOnClickedEventName");
+			propHrefOnClickedEvent = serializedObject.FindProperty("hrefOnClickedEvent");
+		}
 
 		public override void OnInspectorGUI()
 		{
@@ -63,6 +68,8 @@ namespace ui
 				}
 			}
 			EditorGUILayout.PropertyField(propHrefColor);
+			EditorGUILayout.PropertyField(propHrefOnClickedEventName);
+            EditorGUILayout.PropertyField(propHrefOnClickedEvent);
 			serializedObject.ApplyModifiedProperties();
 			--EditorGUI.indentLevel;
 		}

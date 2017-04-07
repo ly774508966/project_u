@@ -28,6 +28,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using System;
 
 namespace ui
@@ -36,6 +37,11 @@ namespace ui
 	{
 		public EmojiConfig config;
 		public Color hrefColor = Color.blue;
+		[Serializable]
+		public class HrefClickedEvent : UnityEvent<string, string> {}
+		[SerializeField]
+		private HrefClickedEvent hrefOnClickedEvent = new HrefClickedEvent();
+		public string hrefOnClickedEventName = "OnHrefClicked";
 
 		private static char placeHolder = 'M';
 
@@ -65,9 +71,6 @@ namespace ui
 			}
 		}
 		List<PosHerfTuple> hrefReplacements = new List<PosHerfTuple>();
-
-		public delegate void OnHref(string href);
-		public event OnHref onHref;
 
 		public string rawText
 		{
@@ -232,7 +235,7 @@ namespace ui
 
 		readonly static VertexHelper emojiVh = new VertexHelper();
 
-		List<Vector3> hrefVh = new List<Vector3>();
+		List<float> hrefVh = new List<float>();
 
 		static Mesh emojiWorkMesh_;
 		static Mesh emojiWorkMesh
@@ -294,9 +297,10 @@ namespace ui
 							tempVert.color = hrefColor;
 							toFill.SetUIVertex(tempVert, baseIndex + k);
 						}
-						hrefVh.Add(tempVerts[0].position);
-						hrefVh.Add(tempVerts[1].position);
-						hrefVh.Add(tempVerts[2].position);
+						hrefVh.Add(tempVerts[0].position.x);
+						hrefVh.Add(tempVerts[1].position.x);
+						hrefVh.Add(tempVerts[2].position.y);
+						hrefVh.Add(tempVerts[0].position.y);
 					}
 				}
 			}
@@ -340,21 +344,23 @@ namespace ui
 					var count = h.end - h.start;
 					for (int j = 0; j < count; ++j)
 					{
-						var baseIndex = (hrefStartIndex + j) * 3;
-						var v0 = hrefVh[baseIndex];
-						var v1 = hrefVh[baseIndex + 1];
-						var v2 = hrefVh[baseIndex + 2];
-						if (local.x < v0.x || local.x > v1.x)
+						var baseIndex = (hrefStartIndex + j) * 4;
+						if (baseIndex <= hrefVh.Count - 4)
 						{
-							continue;
-						}
-						if (local.y > v0.y || local.y < v2.y)
-						{
-							continue;
-						}
-						if (onHref != null)
-						{
-							onHref(h.href);
+							var xMin = hrefVh[baseIndex];
+							var xMax = hrefVh[baseIndex + 1];
+							var yMin = hrefVh[baseIndex + 2];
+							var yMax = hrefVh[baseIndex + 3];
+							if (local.x < xMin || local.x > xMax)
+							{
+								continue;
+							}
+							if (local.y < yMin || local.y > yMax)
+							{
+								continue;
+							}
+							hrefOnClickedEvent.Invoke(hrefOnClickedEventName, h.href);
+							return; // once a time
 						}
 					}
 					hrefStartIndex += count;

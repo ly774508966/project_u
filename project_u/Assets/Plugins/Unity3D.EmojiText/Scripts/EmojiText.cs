@@ -99,19 +99,28 @@ namespace ui
 			}
 			set
 			{
-				base.text = value;
+				if (base.text != value)
+				{
+					base.text = value;
+				}
 			}
 		}
+
+		public float characterBaseline = 0;
+		public float emojiBaseline = 0;
 
 		CanvasRenderer emojiCanvasRenderer;
 
 		protected override void Awake()
 		{
-			var go = new GameObject("emoji");
-			go.hideFlags = HideFlags.HideAndDontSave;
-			go.transform.SetParent(transform, false);
-			emojiCanvasRenderer = go.AddComponent<CanvasRenderer>();
-			emojiCanvasRenderer.hideFlags = HideFlags.HideAndDontSave;
+			if (config != null)
+			{
+				var go = new GameObject("emoji");
+				go.hideFlags = HideFlags.HideAndDontSave;
+				go.transform.SetParent(transform, false);
+				emojiCanvasRenderer = go.AddComponent<CanvasRenderer>();
+				emojiCanvasRenderer.hideFlags = HideFlags.HideAndDontSave;
+			}
 			base.Awake();
 		}
 
@@ -294,8 +303,19 @@ namespace ui
 			base.OnPopulateMesh(toFill);
 			if (config != null)
 			{
-				emojiVh.Clear();
 				UIVertex tempVert = new UIVertex();
+
+				if (characterBaseline != 0f)
+				{
+					for (int i = 0; i < toFill.currentVertCount; ++i)
+					{
+						toFill.PopulateUIVertex(ref tempVert, i);
+						tempVert.position = new Vector3(tempVert.position.x, tempVert.position.y + characterBaseline, tempVert.position.z);
+						toFill.SetUIVertex(tempVert, i);
+					}
+				}
+
+				emojiVh.Clear();
 				for (int i = 0; i < emojiReplacements.Count; ++i)
 				{
 					var r = emojiReplacements[i];
@@ -308,12 +328,13 @@ namespace ui
 						for (int j = 0; j < 4; ++j)
 						{
 							toFill.PopulateUIVertex(ref tempVert, baseIndex + j);
+							tempVert.position = new Vector3(tempVert.position.x, tempVert.position.y + emojiBaseline, tempVert.position.z);
 							tempVerts[j] = tempVert;
 							tempVert.color = Color.clear;
 							toFill.SetUIVertex(tempVert, baseIndex + j);
 						}
 						tempVerts[0].color = Color.white;
-                        tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
+						tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
 						tempVerts[1].color = Color.white;
 						tempVerts[1].uv0 = new Vector2(emojiRect.xMax, emojiRect.yMax);
 						tempVerts[2].color = Color.white;
@@ -427,7 +448,6 @@ namespace ui
 				&& hrefOnClickedEvent.GetPersistentEventCount() > 0
 				&& !string.IsNullOrEmpty(RaycastOnHrefs(sp, eventCamera));
 		}
-
 
 		public void OnPointerClick(PointerEventData eventData)
 		{

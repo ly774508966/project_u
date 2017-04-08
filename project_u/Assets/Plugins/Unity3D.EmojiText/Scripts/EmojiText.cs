@@ -42,6 +42,7 @@ namespace ui
 		[SerializeField]
 		private HrefClickedEvent hrefOnClickedEvent = new HrefClickedEvent();
 		public string hrefOnClickedEventName = "OnHrefClicked";
+		public bool escapeUnicodeCharacter = true;
 
 		private static char placeHolder = 'M';
 
@@ -88,7 +89,7 @@ namespace ui
 			}
 			set
 			{
-				base.text = text;
+				base.text = value;
 			}
 		}
 
@@ -122,10 +123,27 @@ namespace ui
 			base.OnDisable();
 			if (emojiCanvasRenderer != null)
 				emojiCanvasRenderer.Clear();
-        }
+		}
+
+		readonly static Regex unicodeEscapeMatcher = new Regex(@"\\[uU]([0-9a-fA-F]+)");
+		static string EscapeUnicodeChar(string inputString)
+		{
+			var match = unicodeEscapeMatcher.Match(inputString);
+			if (match != null && match.Success)
+			{
+				var ch = char.ConvertFromUtf32(System.Convert.ToInt32(match.Groups[1].ToString(), 16));
+				var processed = inputString.Replace(match.Groups[0].ToString(), ch);
+				return EscapeUnicodeChar(processed);
+			}
+			return inputString;
+		}
 
 		string UpdateReplacements(string inputString)
 		{
+			if (config == null)
+				return inputString;
+			if (escapeUnicodeCharacter)
+				inputString = EscapeUnicodeChar(inputString);
 			hrefReplacements.Clear();
 			var hrefReplaced = UpdateHrefReplacements(inputString);
 			return UpdateEmojiReplacements(hrefReplaced);
@@ -154,7 +172,7 @@ namespace ui
 				for (int i = 0; i < hrefReplacements.Count; ++i)
 				{
 					var h = hrefReplacements[i];
-					if (index >= h.start)
+					if (index >= h.start && index < h.end)
 					{
 						// replace h and the rest
 						h.end -= count;
@@ -173,7 +191,7 @@ namespace ui
 
 		string UpdateEmojiReplacements(string inputString)
 		{
-			if (!string.IsNullOrEmpty(inputString))
+			if (!string.IsNullOrEmpty(inputString) && config != null)
 			{
 				var sb = new System.Text.StringBuilder();
 
@@ -255,52 +273,59 @@ namespace ui
 		protected override void OnPopulateMesh(VertexHelper toFill)
 		{
 			base.OnPopulateMesh(toFill);
-			emojiVh.Clear();
-			UIVertex tempVert = new UIVertex();
-			for (int i = 0; i < emojiReplacements.Count; ++i)
+			if (config != null)
 			{
-				var r = emojiReplacements[i];
-				var emojiPosInString = r.pos;
-				var emojiRect = config.rects[r.emoji];
-
-				int baseIndex = emojiPosInString * 4;
-				if (baseIndex <= toFill.currentVertCount - 4)
+				emojiVh.Clear();
+				UIVertex tempVert = new UIVertex();
+				for (int i = 0; i < emojiReplacements.Count; ++i)
 				{
-					for (int j = 0; j < 4; ++j)
-					{
-						toFill.PopulateUIVertex(ref tempVert, baseIndex + j);
-						tempVerts[j] = tempVert;
-						tempVert.color = Color.clear;
-						toFill.SetUIVertex(tempVert, baseIndex + j);
-					}
-					tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
-					tempVerts[1].uv0 = new Vector2(emojiRect.xMax, emojiRect.yMax);
-					tempVerts[2].uv0 = new Vector2(emojiRect.xMax, emojiRect.y);
-					tempVerts[3].uv0 = new Vector2(emojiRect.x, emojiRect.y);
-					emojiVh.AddUIVertexQuad(tempVerts);
-				}
-			}
+					var r = emojiReplacements[i];
+					var emojiPosInString = r.pos;
+					var emojiRect = config.rects[r.emoji];
 
-			hrefVh.Clear();
-			for (int i = 0; i < hrefReplacements.Count; ++i)
-			{
-				var h = hrefReplacements[i];
-				for (int j = h.start; j < h.end; ++j)
-				{
-					var baseIndex = j * 4;
+					int baseIndex = emojiPosInString * 4;
 					if (baseIndex <= toFill.currentVertCount - 4)
 					{
-						for (int k = 0; k < 4; ++k)
+						for (int j = 0; j < 4; ++j)
 						{
-							toFill.PopulateUIVertex(ref tempVert, baseIndex + k);
-							tempVerts[k] = tempVert;
-							tempVert.color = hrefColor;
-							toFill.SetUIVertex(tempVert, baseIndex + k);
+							toFill.PopulateUIVertex(ref tempVert, baseIndex + j);
+							tempVerts[j] = tempVert;
+							tempVert.color = Color.clear;
+							toFill.SetUIVertex(tempVert, baseIndex + j);
 						}
-						hrefVh.Add(tempVerts[0].position.x);
-						hrefVh.Add(tempVerts[1].position.x);
-						hrefVh.Add(tempVerts[2].position.y);
-						hrefVh.Add(tempVerts[0].position.y);
+						tempVerts[0].color = Color.white;
+                        tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
+						tempVerts[1].color = Color.white;
+						tempVerts[1].uv0 = new Vector2(emojiRect.xMax, emojiRect.yMax);
+						tempVerts[2].color = Color.white;
+						tempVerts[2].uv0 = new Vector2(emojiRect.xMax, emojiRect.y);
+						tempVerts[3].color = Color.white;
+						tempVerts[3].uv0 = new Vector2(emojiRect.x, emojiRect.y);
+						emojiVh.AddUIVertexQuad(tempVerts);
+					}
+				}
+
+				hrefVh.Clear();
+				for (int i = 0; i < hrefReplacements.Count; ++i)
+				{
+					var h = hrefReplacements[i];
+					for (int j = h.start; j < h.end; ++j)
+					{
+						var baseIndex = j * 4;
+						if (baseIndex <= toFill.currentVertCount - 4)
+						{
+							for (int k = 0; k < 4; ++k)
+							{
+								toFill.PopulateUIVertex(ref tempVert, baseIndex + k);
+								tempVerts[k] = tempVert;
+								tempVert.color = hrefColor;
+								toFill.SetUIVertex(tempVert, baseIndex + k);
+							}
+							hrefVh.Add(tempVerts[0].position.x);
+							hrefVh.Add(tempVerts[1].position.x);
+							hrefVh.Add(tempVerts[2].position.y);
+							hrefVh.Add(tempVerts[0].position.y);
+						}
 					}
 				}
 			}
@@ -309,23 +334,29 @@ namespace ui
 		protected override void UpdateGeometry()
 		{
 			base.UpdateGeometry();
-			if (emojiCanvasRenderer != null)
+			if (config != null)
 			{
-				emojiVh.FillMesh(emojiWorkMesh);
-				emojiCanvasRenderer.SetMesh(emojiWorkMesh);
+				if (emojiCanvasRenderer != null)
+				{
+					emojiVh.FillMesh(emojiWorkMesh);
+					emojiCanvasRenderer.SetMesh(emojiWorkMesh);
+				}
 			}
 		}
 
 		protected override void UpdateMaterial()
 		{
 			base.UpdateMaterial();
-			if (IsActive())
+			if (config != null)
 			{
-				if (emojiCanvasRenderer != null)
+				if (IsActive())
 				{
-					emojiCanvasRenderer.materialCount = 1;
-					emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
-					emojiCanvasRenderer.SetTexture(config.texture);
+					if (emojiCanvasRenderer != null)
+					{
+						emojiCanvasRenderer.materialCount = 1;
+						emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
+						emojiCanvasRenderer.SetTexture(config.texture);
+					}
 				}
 			}
 		}

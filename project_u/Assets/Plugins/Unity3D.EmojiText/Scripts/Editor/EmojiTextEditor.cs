@@ -27,7 +27,7 @@ using UnityEditor;
 
 namespace ui
 {
-	[CustomEditor(typeof(ui.EmojiText))]
+	[CustomEditor(typeof(EmojiText))]
 	public class EmojiTextEditor : UnityEditor.UI.TextEditor
 	{
 		GUIContent lbEmoji;
@@ -36,6 +36,7 @@ namespace ui
 		SerializedProperty propHrefColor;
 		SerializedProperty propHrefOnClickedEventName;
 		SerializedProperty propHrefOnClickedEvent;
+		SerializedProperty propEscapeUnicodeCharacter;
 
 
 		protected override void OnEnable()
@@ -47,6 +48,7 @@ namespace ui
 			propHrefColor = serializedObject.FindProperty("hrefColor");
 			propHrefOnClickedEventName = serializedObject.FindProperty("hrefOnClickedEventName");
 			propHrefOnClickedEvent = serializedObject.FindProperty("hrefOnClickedEvent");
+			propEscapeUnicodeCharacter = serializedObject.FindProperty("escapeUnicodeCharacter");
 		}
 
 		public override void OnInspectorGUI()
@@ -64,13 +66,13 @@ namespace ui
 					AssetDatabase.CreateAsset(objConfig, configPath);
 					AssetDatabase.SaveAssets();
 					propConfig.objectReferenceValue = objConfig;
-					serializedObject.ApplyModifiedProperties();
 				}
 			}
 			EditorGUILayout.PropertyField(propHrefColor);
 			EditorGUILayout.PropertyField(propHrefOnClickedEventName);
-            EditorGUILayout.PropertyField(propHrefOnClickedEvent);
-			serializedObject.ApplyModifiedProperties();
+			EditorGUILayout.PropertyField(propHrefOnClickedEvent);
+			EditorGUILayout.PropertyField(propEscapeUnicodeCharacter);
+            serializedObject.ApplyModifiedProperties();
 			--EditorGUI.indentLevel;
 		}
 

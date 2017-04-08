@@ -33,7 +33,10 @@ using System;
 
 namespace ui
 {
-	public class EmojiText : Text, IPointerClickHandler
+	public class EmojiText : Text, 
+		IPointerClickHandler,
+		IPointerDownHandler, IPointerUpHandler,
+		IPointerEnterHandler, IPointerExitHandler
 	{
 		public EmojiConfig config;
 		public Color hrefColor = Color.blue;
@@ -425,6 +428,7 @@ namespace ui
 				&& !string.IsNullOrEmpty(RaycastOnHrefs(sp, eventCamera));
 		}
 
+
 		public void OnPointerClick(PointerEventData eventData)
 		{
 			var href = RaycastOnHrefs(eventData.position, null);
@@ -434,6 +438,20 @@ namespace ui
 			}
 		}
 
+		public void OnPointerDown(PointerEventData eventData)
+		{
+		}
 
+		public void OnPointerUp(PointerEventData eventData)
+		{
+		}
+
+		public void OnPointerEnter(PointerEventData eventData)
+		{
+		}
+
+		public void OnPointerExit(PointerEventData eventData)
+		{
+		}
 	}
 }

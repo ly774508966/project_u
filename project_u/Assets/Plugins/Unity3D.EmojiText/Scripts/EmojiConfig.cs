@@ -31,6 +31,7 @@ namespace ui
 		public Texture texture;
 		public string[] names;
 		public Rect[] rects;
+		public float sizeFactor = 1.3f;
 
 		Dictionary<string, int> map_ = null;
 		public Dictionary<string, int> map

@@ -370,7 +370,10 @@ namespace ui
 					if (emojiCanvasRenderer != null)
 					{
 						emojiCanvasRenderer.materialCount = 1;
-						emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
+						if (config.material != null)
+							emojiCanvasRenderer.SetMaterial(config.material, 0);
+						else
+							emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
 						emojiCanvasRenderer.SetTexture(config.texture);
 					}
 				}

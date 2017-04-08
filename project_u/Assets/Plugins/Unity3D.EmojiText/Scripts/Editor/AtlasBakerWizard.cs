@@ -67,7 +67,7 @@ namespace ui
 
 		public delegate void OnAtlasBaked(string texturePath, string[] names, Rect[] uvs);
 
-		public string pathToTextures;
+		public string[] pathToTextures;
 		public int maxAtlasSize = 2048;
 		public int padding = 2;
 		public bool mipmap = false;
@@ -96,16 +96,23 @@ namespace ui
 
 		void DoAtlas()
 		{
-			if (!System.IO.Directory.Exists(pathToTextures))
-			{
+			if (pathToTextures == null || pathToTextures.Length == 0)
 				return;
-			}
 
 			// 1. get all textures
 			var names = new List<string>();
 			var texturesToAltas = new List<Texture2D>();
 
-			var files = System.IO.Directory.GetFiles(pathToTextures, "*.png");
+			var files = new List<string>();
+			for (int i = 0; i < pathToTextures.Length; ++i)
+			{
+				if (System.IO.Directory.Exists(pathToTextures[i]))
+				{
+					var f = System.IO.Directory.GetFiles(pathToTextures[i], "*.png");
+					files.AddRange(f);
+				}
+			}
+
 			foreach (var f in files)
 			{
 				var t = new Texture2D(2, 2);
@@ -149,15 +156,24 @@ namespace ui
 
 		void OnWizardUpdate()
 		{
-			if (string.IsNullOrEmpty(pathToTextures))
+			if (pathToTextures == null || pathToTextures.Length == 0)
 			{
 				errorString = "Please provide path to textures to altas.";
 				return;
 			}
-			if (!System.IO.Directory.Exists(pathToTextures))
+
+			foreach (var p in pathToTextures)
 			{
-				errorString = pathToTextures + " not found";
-				return;
+				if (string.IsNullOrEmpty(p))
+				{
+					errorString = "empty path found!";
+					return;
+				}
+				if (!System.IO.Directory.Exists(p))
+				{
+					errorString = p + " not found";
+					return;
+				}
 			}
 
 			errorString = string.Empty;

@@ -26,9 +26,7 @@ using UnityEditor;
 using UnityEngine;
 using System.Collections;
 
-using ui;
-
-namespace editor.ui
+namespace ui
 {
 	[CustomEditor(typeof(EmojiConfig))]
 	public class EmojiConfigEditor : Editor

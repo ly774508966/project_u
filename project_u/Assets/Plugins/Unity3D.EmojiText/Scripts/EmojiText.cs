@@ -451,7 +451,7 @@ namespace ui
 
 		public void OnPointerClick(PointerEventData eventData)
 		{
-			var href = RaycastOnHrefs(eventData.position, null);
+			var href = RaycastOnHrefs(eventData.position, eventData.pressEventCamera);
 			if (!string.IsNullOrEmpty(href))
 			{ 
 				hrefOnClickedEvent.Invoke(hrefOnClickedEventName, href);

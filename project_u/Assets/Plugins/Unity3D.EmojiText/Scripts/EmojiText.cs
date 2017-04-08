@@ -380,7 +380,7 @@ namespace ui
 			}
 		}
 
-		protected virtual void RaycastOnHrefs(Vector2 sp, Camera eventCamera)
+		protected virtual string RaycastOnHrefs(Vector2 sp, Camera eventCamera)
 		{
 			if (hrefReplacements.Count > 0)
 			{
@@ -409,19 +409,31 @@ namespace ui
 							{
 								continue;
 							}
-							hrefOnClickedEvent.Invoke(hrefOnClickedEventName, h.href);
-							return; // once a time
+							return h.href; // once a time
 						}
 					}
 					hrefStartIndex += count;
 				}
-
 			}
+			return string.Empty;
+		}
+
+		public override bool Raycast(Vector2 sp, Camera eventCamera)
+		{
+			return base.Raycast(sp, eventCamera) 
+				&& hrefOnClickedEvent.GetPersistentEventCount() > 0
+				&& !string.IsNullOrEmpty(RaycastOnHrefs(sp, eventCamera));
 		}
 
 		public void OnPointerClick(PointerEventData eventData)
 		{
-			RaycastOnHrefs(eventData.position, null);
+			var href = RaycastOnHrefs(eventData.position, null);
+			if (!string.IsNullOrEmpty(href))
+			{ 
+				hrefOnClickedEvent.Invoke(hrefOnClickedEventName, href);
+			}
 		}
+
+
 	}
 }

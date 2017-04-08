@@ -872,7 +872,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "[ttt](link_1) [fff](link_2) [\u3297\u3297\u3297](link_3)"
+  m_Text: "<color=red>kjkjkjkj</color>[ttt](link_1)\u3297[ttt](link_2)kkk\u3297"
   config: {fileID: 11400000, guid: 5e67cd84eaf3c214f9a984e64cbed88c, type: 2}
   hrefColor: {r: 0, g: 0, b: 1, a: 1}
   hrefOnClickedEvent:
@@ -892,6 +892,7 @@ MonoBehaviour:
     m_TypeName: ui.EmojiText+HrefClickedEvent, Assembly-CSharp-firstpass, Version=0.0.0.0,
       Culture=neutral, PublicKeyToken=null
   hrefOnClickedEventName: OnEmojiHrefClicked
+  escapeUnicodeCharacter: 1
 --- !u!222 &1695995102
 CanvasRenderer:
   m_ObjectHideFlags: 0

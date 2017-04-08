@@ -44,7 +44,14 @@ namespace ui
 		public string hrefOnClickedEventName = "OnHrefClicked";
 		public bool escapeUnicodeCharacter = true;
 
-		private static char placeHolder = 'M';
+		const string placeHolderFmt = "<size={0}>M</size>";
+		string GetPlaceHolder()
+		{
+			if (config != null)
+				return string.Format(placeHolderFmt, Mathf.FloorToInt(config.sizeFactor * fontSize));
+			else
+				return string.Format(placeHolderFmt, fontSize);
+        }
 
 		struct PosStringTuple
 		{
@@ -146,7 +153,8 @@ namespace ui
 				inputString = EscapeUnicodeChar(inputString);
 			hrefReplacements.Clear();
 			var hrefReplaced = UpdateHrefReplacements(inputString);
-			return UpdateEmojiReplacements(hrefReplaced);
+			hrefReplaced = UpdateEmojiReplacementsFirstPass(hrefReplaced);
+            return UpdateEmojiReplacements(hrefReplaced);
 		}
 
 		readonly static Regex hrefMatcher = new Regex(@"\[([^\]]+)\]\(([^\]]+)\)");
@@ -156,7 +164,7 @@ namespace ui
 			var match = hrefMatcher.Match(inputString);
 			if (match != null && match.Success)
 			{
-				var processed = inputString.Replace(match.Groups[0].ToString(), match.Groups[1].ToString());
+				var processed = inputString.Substring(0, match.Index) + match.Groups[1].ToString() + inputString.Substring(match.Index + match.Length);
 				var start = match.Groups[0].Index;
 				var end = start + match.Groups[1].Length;
 				hrefReplacements.Add(new PosHerfTuple(start, end, match.Groups[2].ToString()));
@@ -167,27 +175,34 @@ namespace ui
 
 		void UpdateHrefPosTuples(int index, int count)
 		{
-			if (count > 1)
+			if (count != 0)
 			{
 				for (int i = 0; i < hrefReplacements.Count; ++i)
 				{
 					var h = hrefReplacements[i];
-					if (index >= h.start && index < h.end)
+					if (index < h.start || index < h.end)
 					{
-						// replace h and the rest
-						h.end -= count;
+						if (index < h.start)
+							h.start += count;
+						h.end += count;
 						hrefReplacements[i] = h;
 						for (int j = i + 1; j < hrefReplacements.Count; ++j)
 						{
-							var r = hrefReplacements[i];
-							r.start -= count;
-							r.end -= count;
-							hrefReplacements[j] = r;
+							h = hrefReplacements[j];
+							h.start += count;
+							h.end += count;
+							hrefReplacements[j] = h;
 						}
+						return;
 					}
 				}
 			}
 		}
+
+		string UpdateEmojiReplacementsFirstPass(string inputString)
+		{
+			return inputString;
+        }
 
 		string UpdateEmojiReplacements(string inputString)
 		{
@@ -197,6 +212,7 @@ namespace ui
 
 				emojiReplacements.Clear();
 
+				string placeHolder = GetPlaceHolder();
 				int i = 0;
 				while (i < inputString.Length)
 				{
@@ -218,24 +234,30 @@ namespace ui
 					if (config.map.TryGetValue(fourChar, out emojiIndex))
 					{
 						// Check 64 bit emojis first
+						var emojiStart = sb.Length;
 						sb.Append(placeHolder);
-						emojiReplacements.Add(new PosStringTuple(sb.Length - 1, emojiIndex));
+						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
+						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 4);
 						i += 4;
-						UpdateHrefPosTuples(sb.Length - 1, 4);
 					}
 					else if (config.map.TryGetValue(doubleChar, out emojiIndex))
 					{
 						// Then check 32 bit emojis
+						var emojiStart = sb.Length;
 						sb.Append(placeHolder);
-						emojiReplacements.Add(new PosStringTuple(sb.Length - 1, emojiIndex));
+						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
+						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 2);
 						i += 2;
-						UpdateHrefPosTuples(sb.Length - 1, 2);
 					}
 					else if (config.map.TryGetValue(singleChar, out emojiIndex))
 					{
-						// Finally check 16 bit emojis
+						var emojiStart = sb.Length;
 						sb.Append(placeHolder);
-						emojiReplacements.Add(new PosStringTuple(sb.Length - 1, emojiIndex));
+						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
+						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 1);
 						i++;
 					}
 					else

@@ -153,7 +153,6 @@ namespace ui
 				inputString = EscapeUnicodeChar(inputString);
 			hrefReplacements.Clear();
 			var hrefReplaced = UpdateHrefReplacements(inputString);
-			hrefReplaced = UpdateEmojiReplacementsFirstPass(hrefReplaced);
             return UpdateEmojiReplacements(hrefReplaced);
 		}
 
@@ -198,11 +197,6 @@ namespace ui
 				}
 			}
 		}
-
-		string UpdateEmojiReplacementsFirstPass(string inputString)
-		{
-			return inputString;
-        }
 
 		string UpdateEmojiReplacements(string inputString)
 		{

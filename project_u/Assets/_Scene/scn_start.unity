@@ -517,7 +517,7 @@ RectTransform:
   m_Children:
   - {fileID: 1510545924}
   m_Father: {fileID: 1628361170}
-  m_RootOrder: 2
+  m_RootOrder: 1
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 25.3, y: 100.4}
@@ -865,8 +865,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_Children:
   - {fileID: 221079279}
-  - {fileID: 126749916}
   - {fileID: 569875199}
+  - {fileID: 126749916}
   m_Father: {fileID: 78473291}
   m_RootOrder: 0
   m_AnchorMin: {x: 0, y: 0}
@@ -1125,6 +1125,11 @@ Prefab:
         type: 2}
       propertyPath: m_Pivot.y
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 114000010660721292, guid: 1af0d12cc7f5e1e4c90be599bbadb4ed,
+        type: 2}
+      propertyPath: m_Text
+      value: "<color=red>kjkjkjkj</color>[t\\u1f628tt](link_1)\u3297[ttt](link_2)kkk\u3297`aa\u3297a`\u3297[mmm](kkk)\\u1f628\\u1f628\\u1f628"
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_ParentPrefab: {fileID: 100100000, guid: 1af0d12cc7f5e1e4c90be599bbadb4ed, type: 2}

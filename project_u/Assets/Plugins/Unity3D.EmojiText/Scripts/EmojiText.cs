@@ -191,9 +191,9 @@ namespace ui
 			if (emojiCanvasRenderer != null)
 			{
 				if (Application.isPlaying)
-					Destroy(emojiCanvasRenderer);
+					Destroy(emojiCanvasRenderer.gameObject);
 				else
-					DestroyImmediate(emojiCanvasRenderer);
+					DestroyImmediate(emojiCanvasRenderer.gameObject);
 				emojiCanvasRenderer = null;
 			}
 			base.OnDestroy();

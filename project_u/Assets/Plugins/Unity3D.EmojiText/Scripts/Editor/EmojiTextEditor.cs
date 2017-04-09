@@ -37,6 +37,9 @@ namespace ui
 		SerializedProperty propHrefOnClickedEventName;
 		SerializedProperty propHrefOnClickedEvent;
 		SerializedProperty propEscapeUnicodeCharacter;
+		SerializedProperty propAltPredefinedStringColor;
+		SerializedProperty propPredefinedStringColor;
+		SerializedProperty propShowRawText;
 
 
 		protected override void OnEnable()
@@ -44,12 +47,15 @@ namespace ui
 			base.OnEnable();
 			lbEmoji = new GUIContent("Emoji");
 
-			propConfig = serializedObject.FindProperty("config");
+			propConfig = serializedObject.FindProperty("m_Config");
 			propHrefColor = serializedObject.FindProperty("hrefColor");
 			propHrefOnClickedEventName = serializedObject.FindProperty("hrefOnClickedEventName");
 			propHrefOnClickedEvent = serializedObject.FindProperty("hrefOnClickedEvent");
 			propEscapeUnicodeCharacter = serializedObject.FindProperty("escapeUnicodeCharacter");
-		}
+			propAltPredefinedStringColor = serializedObject.FindProperty("altPredefinedStringColor");
+			propPredefinedStringColor = serializedObject.FindProperty("predefinedStringColor");
+			propShowRawText = serializedObject.FindProperty("showRawText");
+        }
 
 		public override void OnInspectorGUI()
 		{
@@ -72,7 +78,10 @@ namespace ui
 			EditorGUILayout.PropertyField(propHrefOnClickedEventName);
 			EditorGUILayout.PropertyField(propHrefOnClickedEvent);
 			EditorGUILayout.PropertyField(propEscapeUnicodeCharacter);
-            serializedObject.ApplyModifiedProperties();
+			EditorGUILayout.PropertyField(propAltPredefinedStringColor);
+			EditorGUILayout.PropertyField(propPredefinedStringColor);
+			EditorGUILayout.PropertyField(propShowRawText);
+			serializedObject.ApplyModifiedProperties();
 			--EditorGUI.indentLevel;
 		}
 

@@ -383,6 +383,17 @@ namespace ui
 				}
 			}
 		}
+		readonly static List<Component> components = new List<Component>();
+		Material GetModifiedEmojiMaterial(Material baseMaterial)
+		{
+			GetComponents(typeof(IMaterialModifier), components);
+			var currentMat = baseMaterial;
+			for (var i = 0; i < components.Count; i++)
+				currentMat = (components[i] as IMaterialModifier).GetModifiedMaterial(currentMat);
+			components.Clear();
+			return currentMat;
+		}
+
 
 		protected override void UpdateMaterial()
 		{
@@ -395,7 +406,7 @@ namespace ui
 					{
 						emojiCanvasRenderer.materialCount = 1;
 						if (config.material != null)
-							emojiCanvasRenderer.SetMaterial(config.material, 0);
+							emojiCanvasRenderer.SetMaterial(GetModifiedEmojiMaterial(config.material), 0);
 						else
 							emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
 						emojiCanvasRenderer.SetTexture(config.texture);

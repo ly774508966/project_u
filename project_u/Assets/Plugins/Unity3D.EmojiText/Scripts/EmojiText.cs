@@ -593,11 +593,10 @@ namespace ui
 			base.UpdateGeometry();
 			if (shouldEmojilize)
 			{
-				if (emojiCanvasRenderer != null)
-				{
-					emojiVh.FillMesh(emojiWorkMesh);
-					emojiCanvasRenderer.SetMesh(emojiWorkMesh);
-				}
+				CreateEmojiCanvasRenderer();
+
+				emojiVh.FillMesh(emojiWorkMesh);
+				emojiCanvasRenderer.SetMesh(emojiWorkMesh);
 			}
 		}
 		readonly static List<Component> components = new List<Component>();
@@ -619,15 +618,14 @@ namespace ui
 			{
 				if (IsActive())
 				{
-					if (emojiCanvasRenderer != null)
-					{
-						emojiCanvasRenderer.materialCount = 1;
-						if (config.material != null)
-							emojiCanvasRenderer.SetMaterial(GetModifiedEmojiMaterial(config.material), 0);
-						else
-							emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
-						emojiCanvasRenderer.SetTexture(config.texture);
-					}
+					CreateEmojiCanvasRenderer();
+
+					emojiCanvasRenderer.materialCount = 1;
+					if (config.material != null)
+						emojiCanvasRenderer.SetMaterial(GetModifiedEmojiMaterial(config.material), 0);
+					else
+						emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
+					emojiCanvasRenderer.SetTexture(config.texture);
 				}
 			}
 			else

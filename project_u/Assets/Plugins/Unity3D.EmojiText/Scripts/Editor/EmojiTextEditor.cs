@@ -27,7 +27,7 @@ using UnityEditor;
 
 namespace ui
 {
-	[CustomEditor(typeof(EmojiText))]
+	[CustomEditor(typeof(EmojiText), true)]
 	public class EmojiTextEditor : UnityEditor.UI.TextEditor
 	{
 		GUIContent lbEmoji;

@@ -71,7 +71,12 @@ namespace ui
 
 		public bool showRawText = false;
 
-		public System.Func<string, string> willInsertBackOnePredefinedString;
+		public System.Func<string, string> willInsertBackOnePredefinedString = NothingWillBeDoneOnPredefinedString;
+
+		static string NothingWillBeDoneOnPredefinedString(string s)
+		{
+			return s;
+		}
 
 		const string placeHolderFmt = "<size={0}>M</size>";
 		string GetPlaceHolder()
@@ -109,20 +114,6 @@ namespace ui
 		}
 		List<PosHerfTuple> hrefReplacements = new List<PosHerfTuple>();
 
-
-		struct PosPredefinedTuple
-		{
-			public int pos;
-			public string predefined;
-
-			public PosPredefinedTuple(int p, string pre)
-			{
-				pos = p;
-				predefined = pre;
-			}
-		}
-		List<PosPredefinedTuple> predefinedReplacements = new List<PosPredefinedTuple>();
-
 		public string rawText
 		{
 			get
@@ -156,8 +147,8 @@ namespace ui
 			get
 			{
 				return config != null && !showRawText;
-            }
-        }
+			}
+		}
 
 		void CreateEmojiCanvasRenderer()
 		{
@@ -177,6 +168,8 @@ namespace ui
 					go.hideFlags = HideFlags.HideAndDontSave;
 					go.transform.SetParent(transform, false);
 				}
+
+				supportRichText = true;
 			}
 		}
 
@@ -212,30 +205,13 @@ namespace ui
 			var match = predefinedMatcher.Match(inputString);
 			if (match != null && match.Success)
 			{
-				// remove predefined
-				var processed = inputString.Substring(0, match.Index) + inputString.Substring(match.Index + match.Length);
-				predefinedReplacements.Add(new PosPredefinedTuple(match.Index, match.Groups[1].ToString()));
-				return UpdatePredefinedReplacements(processed);
-			}
-			return inputString;
-		}
-
-		string InsertBackPredefinedReplacements(string inputString)
-		{
-			for (int i = 0; i < predefinedReplacements.Count; ++i)
-			{
-				var p = predefinedReplacements[i];
-				var toInsert = p.predefined;
-				if (willInsertBackOnePredefinedString != null)
-					toInsert = willInsertBackOnePredefinedString(toInsert);
+				// replace predefined
+				var toInsert = willInsertBackOnePredefinedString(match.Groups[1].ToString());
 				if (altPredefinedStringColor)
 				{
 					toInsert = string.Format("<color=#{0}>{1}</color>", ColorUtility.ToHtmlStringRGBA(predefinedStringColor), toInsert);
 				}
-				inputString = inputString.Substring(0, p.pos) + toInsert + inputString.Substring(p.pos);
-				InsertPosHrefTuples(p.pos, toInsert.Length);
-				InsertPosEmojiTuples(p.pos, toInsert.Length);
-				InsertPosPredefinedTuples(i + 1, toInsert.Length);
+				return UpdatePredefinedReplacements(inputString.Replace(match.Groups[0].ToString(), toInsert));
 			}
 			return inputString;
 		}
@@ -258,7 +234,6 @@ namespace ui
 			if (!shouldEmojilize)
 				return inputString;
 
-			predefinedReplacements.Clear();
 			inputString = UpdatePredefinedReplacements(inputString);
 
 			if (escapeUnicodeCharacter)
@@ -266,9 +241,7 @@ namespace ui
 
 			hrefReplacements.Clear();
 			inputString = UpdateHrefReplacements(inputString);
-
 			inputString = UpdateEmojiReplacements(inputString);
-			inputString = InsertBackPredefinedReplacements(inputString);
 			return inputString;
 		}
 
@@ -284,47 +257,12 @@ namespace ui
 				var start = match.Groups[0].Index;
 				var end = start + match.Groups[1].Length;
 				hrefReplacements.Add(new PosHerfTuple(start, end, match.Groups[2].ToString()));
-				UpdatePosPredefinedTuples(start, end - start - match.Length);
 				return UpdateHrefReplacements(processed);
 			}
 			return inputString;
 		}
 
-		void InsertPosPredefinedTuples(int predefinedReplacementStartIndex, int count)
-		{
-			if (count != 0)
-			{
-				for (int i = predefinedReplacementStartIndex; i < predefinedReplacements.Count; ++i)
-				{
-					var p = predefinedReplacements[i];
-					p.pos += count;
-					predefinedReplacements[i] = p;
-				}
-			}
-		}
 
-		void UpdatePosPredefinedTuples(int index, int count)
-		{
-			if (count != 0)
-			{
-				for (int i = 0; i < predefinedReplacements.Count; ++i)
-				{
-					var p = predefinedReplacements[i];
-					if (index < p.pos)
-					{
-						p.pos += count;
-						predefinedReplacements[i] = p;
-						for (int j = i + 1; j < predefinedReplacements.Count; ++j)
-						{
-							p = predefinedReplacements[j];
-							p.pos += count;
-							predefinedReplacements[j] = p;
-						}
-						return;
-					}
-				}
-			}
-		}
 
 		void InsertPosEmojiTuples(int index, int count)
 		{
@@ -458,7 +396,6 @@ namespace ui
 						sb.Append(placeHolder);
 						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
 						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosPredefinedTuples(emojiStart, placeHolder.Length - 4);
 						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 4);
 						i += 4;
 					}
@@ -469,7 +406,6 @@ namespace ui
 						sb.Append(placeHolder);
 						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
 						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosPredefinedTuples(emojiStart, placeHolder.Length - 2);
 						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 2);
 						i += 2;
 					}
@@ -479,7 +415,6 @@ namespace ui
 						sb.Append(placeHolder);
 						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
 						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosPredefinedTuples(emojiStart, placeHolder.Length - 1);
 						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 1);
 						i++;
 					}

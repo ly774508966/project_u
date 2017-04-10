@@ -88,6 +88,8 @@ namespace ui
 					if (m_TextComponent != null)
 						m_TextComponent.text = value;
 				}
+				if (m_Placeholder != null)
+					m_Placeholder.enabled = string.IsNullOrEmpty(m_Text);
 			}
 		}
 
@@ -298,6 +300,7 @@ namespace ui
 				{
 					if (m_FakeKeyboard.wasCanceled)
 						m_WasCanceled = true;
+					DeactivateInputField();
 					OnDeselect(null);
 				}
 			}

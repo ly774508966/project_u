@@ -362,15 +362,10 @@ namespace ui
 			}
 		}
 
-		string UpdateEmojiReplacements(string inputString)
+		public static void UpdateEmojiReplacements(string inputString, EmojiConfig config, System.Action<string, int> onEmojiChar)
 		{
-			emojiReplacements.Clear();
-
 			if (!string.IsNullOrEmpty(inputString))
 			{
-				var sb = new System.Text.StringBuilder();
-
-				string placeHolder = GetPlaceHolder();
 				int i = 0;
 				while (i < inputString.Length)
 				{
@@ -392,41 +387,74 @@ namespace ui
 					if (config.map.TryGetValue(fourChar, out emojiIndex))
 					{
 						// Check 64 bit emojis first
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 4);
+						onEmojiChar(fourChar, emojiIndex);
 						i += 4;
 					}
 					else if (config.map.TryGetValue(doubleChar, out emojiIndex))
 					{
 						// Then check 32 bit emojis
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 2);
+						onEmojiChar(doubleChar, emojiIndex);
 						i += 2;
 					}
 					else if (config.map.TryGetValue(singleChar, out emojiIndex))
 					{
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
-						UpdatePosHrefTuples(emojiStart, placeHolder.Length - 1);
+						onEmojiChar(singleChar, emojiIndex);
 						i++;
 					}
 					else
 					{
-						sb.Append(inputString[i]);
+						onEmojiChar(singleChar, -1);
 						i++;
 					}
 				}
-				return sb.ToString();
 			}
-			return string.Empty;
+		}
+
+		string UpdateEmojiReplacements(string inputString)
+		{
+			emojiReplacements.Clear();
+
+			var sb = new System.Text.StringBuilder();
+			string placeHolder = GetPlaceHolder();
+
+			UpdateEmojiReplacements(
+				inputString, config,
+				(emojiChar, emojiIndex) =>
+				{
+					if (emojiIndex != -1)
+					{
+						var charLength = emojiChar.Length;
+						if (charLength == 4)
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 4);
+						}
+						else if (charLength == 2)
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 2);
+						}
+						else
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 1);
+						}
+					}
+					else
+					{
+						sb.Append(emojiChar);
+					}
+				});
+			return sb.ToString();
 		}
 
 		readonly UIVertex[] tempVerts = new UIVertex[4];

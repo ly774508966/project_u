@@ -1098,8 +1098,8 @@ RectTransform:
   m_RootOrder: 0
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 232, y: 100.4}
-  m_SizeDelta: {x: 160, y: 20}
+  m_AnchoredPosition: {x: 232, y: 107}
+  m_SizeDelta: {x: 160, y: 33}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1346501612
 MonoBehaviour:
@@ -1214,7 +1214,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: AFALKFJLAFJLD
+  m_Text: "\u3297\u3297\u3297"
   m_Config: {fileID: 11400000, guid: 5e67cd84eaf3c214f9a984e64cbed88c, type: 2}
   hrefColor: {r: 0, g: 0, b: 1, a: 1}
   hrefOnClickedEvent:

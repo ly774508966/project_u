@@ -35,11 +35,48 @@ using System;
 
 namespace ui
 {
-	public class EmojiText : Text, 
-		IPointerClickHandler,
-		IPointerDownHandler, IPointerUpHandler,
-		IPointerEnterHandler, IPointerExitHandler
+	public class EmojiText : Text
 	{
+		class HrefHandler
+			: MonoBehaviour,
+			IPointerClickHandler,
+			IPointerDownHandler, IPointerUpHandler,
+			IPointerEnterHandler, IPointerExitHandler
+		{
+			public Func<Vector2, Camera, string> raycastDelegate;
+			public Action<string> handleDelegate;
+
+			public void OnPointerClick(PointerEventData eventData)
+			{
+				if (raycastDelegate != null)
+				{
+					var href = raycastDelegate(eventData.position, eventData.pressEventCamera);
+					if (!string.IsNullOrEmpty(href))
+					{
+						if (handleDelegate != null)
+						{
+							handleDelegate(href);
+						}
+					}
+				}
+			}
+
+			public void OnPointerDown(PointerEventData eventData)
+			{
+			}
+
+			public void OnPointerUp(PointerEventData eventData)
+			{
+			}
+
+			public void OnPointerEnter(PointerEventData eventData)
+			{
+			}
+			public void OnPointerExit(PointerEventData eventData)
+			{
+			}
+		}
+
 		[FormerlySerializedAs("config")]
 		[SerializeField]
 		EmojiConfig m_Config;
@@ -173,10 +210,24 @@ namespace ui
 			}
 		}
 
-		protected override void Awake()
+		HrefHandler hrefHandler;
+
+		void CreateHrefHandler()
 		{
-			CreateEmojiCanvasRenderer();
-			base.Awake();
+			if (Application.isPlaying)
+			{
+				if (hrefOnClickedEvent.GetPersistentEventCount() > 0 && hrefHandler == null)
+				{
+					var handler = gameObject.GetComponent<HrefHandler>();
+					if (handler == null)
+					{
+						handler = gameObject.AddComponent<HrefHandler>();
+					}
+					handler.raycastDelegate = RaycastOnHrefs;
+					handler.handleDelegate = (href) => hrefOnClickedEvent.Invoke(hrefOnClickedEventName, href);
+					hrefHandler = handler;
+				}
+			}
 		}
 
 		protected override void OnDestroy()
@@ -190,6 +241,13 @@ namespace ui
 				emojiCanvasRenderer = null;
 			}
 			base.OnDestroy();
+		}
+
+		protected override void OnEnable()
+		{
+			base.OnEnable();
+			CreateEmojiCanvasRenderer();
+			CreateHrefHandler();
 		}
 
 		protected override void OnDisable()
@@ -636,49 +694,6 @@ namespace ui
 				}
 			}
 			return string.Empty;
-		}
-
-		public override bool Raycast(Vector2 sp, Camera eventCamera)
-		{
-			var ret = base.Raycast(sp, eventCamera);
-			if (ret)
-			{
-				if (shouldEmojilize)
-				{
-					return hrefOnClickedEvent.GetPersistentEventCount() > 0
-						&& !string.IsNullOrEmpty(RaycastOnHrefs(sp,	eventCamera));
-				}
-				else
-				{
-					return false;
-				}
-			}
-			return ret;
-		}
-
-		public void OnPointerClick(PointerEventData eventData)
-		{
-			var href = RaycastOnHrefs(eventData.position, eventData.pressEventCamera);
-			if (!string.IsNullOrEmpty(href))
-			{ 
-				hrefOnClickedEvent.Invoke(hrefOnClickedEventName, href);
-			}
-		}
-
-		public void OnPointerDown(PointerEventData eventData)
-		{
-		}
-
-		public void OnPointerUp(PointerEventData eventData)
-		{
-		}
-
-		public void OnPointerEnter(PointerEventData eventData)
-		{
-		}
-
-		public void OnPointerExit(PointerEventData eventData)
-		{
 		}
 	}
 }

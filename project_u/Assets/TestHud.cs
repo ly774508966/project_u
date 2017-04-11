@@ -7,4 +7,9 @@ public class TestHud : MonoBehaviour {
 	{
 		Debug.Log("TestHud.OnEmojiHrefClicked " + href);
 	}
+
+	void OnThisButtonClicked()
+	{
+		Debug.Log("OnThisButtonClicked");
+    }
 }

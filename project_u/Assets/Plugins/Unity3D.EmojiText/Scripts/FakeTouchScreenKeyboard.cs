@@ -39,9 +39,10 @@ namespace ui
  			}
 		}
 
+		[System.NonSerialized]
 		public bool wasCanceled = false;
+		[System.NonSerialized]
 		public bool done = false;
-
 
 		public InputField inputField;
 

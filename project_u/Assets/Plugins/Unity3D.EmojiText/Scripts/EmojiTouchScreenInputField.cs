@@ -37,37 +37,27 @@ namespace ui
 	public class EmojiTouchScreenInputField : Selectable, IPointerClickHandler
 	{
 		[SerializeField]
-		bool m_HideMobileInput;
+		EmojiConfig m_Config;
+		[SerializeField]
+		bool m_ExcludeEmojiCharaceters;
+
+		bool excludeEmojiCharacters
+		{
+			get
+			{
+				return m_ExcludeEmojiCharaceters && m_Config != null;
+			}
+		}
 
 		protected TouchScreenKeyboard m_Keyboard;
 		protected FakeTouchScreenKeyboard m_FakeKeyboard;
-
-		public bool shouldHideMobileInput
-		{
-			set
-			{
-				m_HideMobileInput = value;
-			}
-			get
-			{
-				switch (Application.platform)
-				{
-					case RuntimePlatform.Android:
-					case RuntimePlatform.BlackBerryPlayer:
-					case RuntimePlatform.IPhonePlayer:
-					case RuntimePlatform.TizenPlayer:
-					case RuntimePlatform.tvOS:
-						return m_HideMobileInput;
-				}
-
-				return true;
-			}
-		}
 
 		[SerializeField]
 		EmojiText m_TextComponent;
 		[SerializeField]
 		Text m_Placeholder;
+		[SerializeField]
+		Char m_EmojiReplaceChar = '?';
 
 		string m_OriginalText;
 
@@ -88,6 +78,8 @@ namespace ui
 					if (m_TextComponent != null)
 						m_TextComponent.text = value;
 				}
+				if (m_Placeholder != null)
+					m_Placeholder.enabled = string.IsNullOrEmpty(m_Text);
 			}
 		}
 
@@ -108,10 +100,6 @@ namespace ui
 
 			if (TouchScreenKeyboard.isSupported)
 			{
-				if (Input.touchSupported)
-				{
-					TouchScreenKeyboard.hideInput = shouldHideMobileInput;
-				}
 				m_Keyboard = TouchScreenKeyboard.Open(m_Text, m_KeyboardType, autocorrection: false, multiline: false);
 			}
 			else
@@ -202,14 +190,37 @@ namespace ui
 				}
 				else
 				{
+					string keyboardText = string.Empty;
 					if (m_Keyboard != null)
 					{
-						text = m_Keyboard.text;
+						keyboardText = m_Keyboard.text;
 					}
 					else
 					{
-						Debug.Assert(m_FakeKeyboard != null);
-						text = m_FakeKeyboard.text;
+						keyboardText = m_FakeKeyboard.text;
+					}
+
+					if (excludeEmojiCharacters)
+					{
+						var sb = new System.Text.StringBuilder();
+						EmojiText.UpdateEmojiReplacements(
+							keyboardText, m_Config,
+							(emojiChar, emojiIndex) =>
+							{
+								if (emojiIndex != -1)
+								{
+									sb.Append(m_EmojiReplaceChar);
+								}
+								else
+								{
+									sb.Append(emojiChar);
+								}
+							});
+						text = sb.ToString();
+					}
+					else
+					{
+						text = keyboardText;
 					}
 				}
 
@@ -298,6 +309,7 @@ namespace ui
 				{
 					if (m_FakeKeyboard.wasCanceled)
 						m_WasCanceled = true;
+					DeactivateInputField();
 					OnDeselect(null);
 				}
 			}

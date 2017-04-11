@@ -7,27 +7,26 @@ namespace ui
 	[CustomEditor(typeof(EmojiTouchScreenInputField))]
 	public class EmojiTouchScreenInputFieldEditor : Editor
 	{
-		SerializedProperty propHideMobileInput;
+		GUIContent lbTextComponent;
 		SerializedProperty propTextComponent;
+
+		GUIContent lbPlaceholder;
 		SerializedProperty propPlaceholder;
+
+		GUIContent lbText;
 		SerializedProperty propText;
+
+		GUIContent lbKeyboardType;
 		SerializedProperty propKeyboardType;
+
 		SerializedProperty propOnEndEdit;
 
-		GUIContent lbHideMobileInput;
-		GUIContent lbTextComponent;
-		GUIContent lbPlaceholder;
-		GUIContent lbText;
-		GUIContent lbKeyboardType;
-
-
-
+		SerializedProperty propExcludeEmojiCharacters;
+		SerializedProperty propEmojiConfig;
+		SerializedProperty propEmojiReplaceChar;
 
 		void OnEnable()
 		{
-			lbHideMobileInput = new GUIContent("Hide Mobile Input");
-			propHideMobileInput = serializedObject.FindProperty("m_HideMobileInput");
-
 			lbTextComponent = new GUIContent("Text Component");
 			propTextComponent = serializedObject.FindProperty("m_TextComponent");
 
@@ -41,16 +40,28 @@ namespace ui
 			propKeyboardType = serializedObject.FindProperty("m_KeyboardType");
 
 			propOnEndEdit = serializedObject.FindProperty("onEndEdit");
+
+
+			propExcludeEmojiCharacters = serializedObject.FindProperty("m_ExcludeEmojiCharaceters");
+			propEmojiConfig = serializedObject.FindProperty("m_Config");
+
+			propEmojiReplaceChar = serializedObject.FindProperty("m_EmojiReplaceChar");
+
 		}
 
 		public override void OnInspectorGUI()
 		{
 			serializedObject.Update();
-			EditorGUILayout.PropertyField(propHideMobileInput, lbHideMobileInput);
 			EditorGUILayout.PropertyField(propTextComponent, lbTextComponent);
 			EditorGUILayout.PropertyField(propPlaceholder, lbPlaceholder);
 			EditorGUILayout.PropertyField(propKeyboardType, lbKeyboardType);
 			EditorGUILayout.PropertyField(propOnEndEdit);
+			EditorGUILayout.PropertyField(propExcludeEmojiCharacters);
+			if (propExcludeEmojiCharacters.boolValue)
+			{
+				EditorGUILayout.PropertyField(propEmojiConfig);
+				EditorGUILayout.PropertyField(propEmojiReplaceChar);
+			}
 			serializedObject.ApplyModifiedProperties();
 		}
 

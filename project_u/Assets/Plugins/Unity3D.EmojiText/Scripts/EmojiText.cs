@@ -29,13 +29,72 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 using System;
+
 
 namespace ui
 {
-	public class EmojiText : Text, IPointerClickHandler
+	public class EmojiText : Text
 	{
-		public EmojiConfig config;
+		class HrefHandler
+			: MonoBehaviour,
+			IPointerClickHandler,
+			IPointerDownHandler, IPointerUpHandler,
+			IPointerEnterHandler, IPointerExitHandler
+		{
+			public Func<Vector2, Camera, string> raycastDelegate;
+			public Action<string> handleDelegate;
+
+			public void OnPointerClick(PointerEventData eventData)
+			{
+				if (raycastDelegate != null)
+				{
+					var href = raycastDelegate(eventData.position, eventData.pressEventCamera);
+					if (!string.IsNullOrEmpty(href))
+					{
+						if (handleDelegate != null)
+						{
+							handleDelegate(href);
+						}
+					}
+				}
+			}
+
+			public void OnPointerDown(PointerEventData eventData)
+			{
+			}
+
+			public void OnPointerUp(PointerEventData eventData)
+			{
+			}
+
+			public void OnPointerEnter(PointerEventData eventData)
+			{
+			}
+			public void OnPointerExit(PointerEventData eventData)
+			{
+			}
+		}
+
+		[FormerlySerializedAs("config")]
+		[SerializeField]
+		EmojiConfig m_Config;
+		EmojiConfig config
+		{
+			get
+			{
+				return m_Config;
+			}
+			set
+			{
+				m_Config = value;
+				if (shouldEmojilize)
+				{
+					CreateEmojiCanvasRenderer();
+				}
+			}
+		}
 		public Color hrefColor = Color.blue;
 		[Serializable]
 		public class HrefClickedEvent : UnityEvent<string, string> {}
@@ -43,6 +102,18 @@ namespace ui
 		private HrefClickedEvent hrefOnClickedEvent = new HrefClickedEvent();
 		public string hrefOnClickedEventName = "OnHrefClicked";
 		public bool escapeUnicodeCharacter = true;
+
+		public bool altPredefinedStringColor = false;
+		public Color predefinedStringColor = Color.green;
+
+		public bool showRawText = false;
+
+		public System.Func<string, string> willInsertBackOnePredefinedString = NothingWillBeDoneOnPredefinedString;
+
+		static string NothingWillBeDoneOnPredefinedString(string s)
+		{
+			return s;
+		}
 
 		const string placeHolderFmt = "<size={0}>M</size>";
 		string GetPlaceHolder()
@@ -53,17 +124,17 @@ namespace ui
 				return string.Format(placeHolderFmt, fontSize);
         }
 
-		struct PosStringTuple
+		struct PosEmojiTuple
 		{
 			public int pos;
 			public int emoji;
-			public PosStringTuple(int p, int s)
+			public PosEmojiTuple(int p, int s)
 			{
 				this.pos = p;
 				this.emoji = s;
 			}
 		}
-		List<PosStringTuple> emojiReplacements = new List<PosStringTuple>();
+		List<PosEmojiTuple> emojiReplacements = new List<PosEmojiTuple>();
 
 		struct PosHerfTuple
 		{
@@ -96,20 +167,67 @@ namespace ui
 			}
 			set
 			{
-				base.text = value;
+				if (base.text != value)
+				{
+					base.text = value;
+				}
 			}
 		}
 
+		public float characterBaseline = 0;
+		public float emojiBaseline = 0;
+
 		CanvasRenderer emojiCanvasRenderer;
 
-		protected override void Awake()
+		bool shouldEmojilize
 		{
-			var go = new GameObject("emoji");
-			go.hideFlags = HideFlags.HideAndDontSave;
-			go.transform.SetParent(transform, false);
-			emojiCanvasRenderer = go.AddComponent<CanvasRenderer>();
-			emojiCanvasRenderer.hideFlags = HideFlags.HideAndDontSave;
-			base.Awake();
+			get
+			{
+				return config != null && !showRawText;
+			}
+		}
+
+		void CreateEmojiCanvasRenderer()
+		{
+			if (shouldEmojilize && emojiCanvasRenderer == null)
+			{
+				var trans = transform.FindChild("__emoji");
+				if (trans != null)
+				{
+					emojiCanvasRenderer = trans.GetComponent<CanvasRenderer>();
+					trans.gameObject.hideFlags = HideFlags.HideAndDontSave;
+				}
+				if (emojiCanvasRenderer == null)
+				{
+					var go = new GameObject("__emoji");
+					emojiCanvasRenderer = go.AddComponent<CanvasRenderer>();
+					emojiCanvasRenderer.hideFlags = HideFlags.HideAndDontSave;
+					go.hideFlags = HideFlags.HideAndDontSave;
+					go.transform.SetParent(transform, false);
+				}
+
+				supportRichText = true;
+			}
+		}
+
+		HrefHandler hrefHandler;
+
+		void CreateHrefHandler()
+		{
+			if (Application.isPlaying)
+			{
+				if (hrefOnClickedEvent.GetPersistentEventCount() > 0 && hrefHandler == null)
+				{
+					var handler = gameObject.GetComponent<HrefHandler>();
+					if (handler == null)
+					{
+						handler = gameObject.AddComponent<HrefHandler>();
+					}
+					handler.raycastDelegate = RaycastOnHrefs;
+					handler.handleDelegate = (href) => hrefOnClickedEvent.Invoke(hrefOnClickedEventName, href);
+					hrefHandler = handler;
+				}
+			}
 		}
 
 		protected override void OnDestroy()
@@ -125,11 +243,35 @@ namespace ui
 			base.OnDestroy();
 		}
 
+		protected override void OnEnable()
+		{
+			base.OnEnable();
+			CreateEmojiCanvasRenderer();
+			CreateHrefHandler();
+		}
+
 		protected override void OnDisable()
 		{
 			base.OnDisable();
 			if (emojiCanvasRenderer != null)
 				emojiCanvasRenderer.Clear();
+		}
+
+		readonly static Regex predefinedMatcher = new Regex(@"`([^`]*)`");
+		string UpdatePredefinedReplacements(string inputString)
+		{
+			var match = predefinedMatcher.Match(inputString);
+			if (match != null && match.Success)
+			{
+				// replace predefined
+				var toInsert = willInsertBackOnePredefinedString(match.Groups[1].ToString());
+				if (altPredefinedStringColor)
+				{
+					toInsert = string.Format("<color=#{0}>{1}</color>", ColorUtility.ToHtmlStringRGBA(predefinedStringColor), toInsert);
+				}
+				return UpdatePredefinedReplacements(inputString.Replace(match.Groups[0].ToString(), toInsert));
+			}
+			return inputString;
 		}
 
 		readonly static Regex unicodeEscapeMatcher = new Regex(@"\\[uU]([0-9a-fA-F]+)");
@@ -147,18 +289,23 @@ namespace ui
 
 		string UpdateReplacements(string inputString)
 		{
-			if (config == null)
+			if (!shouldEmojilize)
 				return inputString;
+
+			inputString = UpdatePredefinedReplacements(inputString);
+
 			if (escapeUnicodeCharacter)
 				inputString = EscapeUnicodeChar(inputString);
+
 			hrefReplacements.Clear();
-			var hrefReplaced = UpdateHrefReplacements(inputString);
-			hrefReplaced = UpdateEmojiReplacementsFirstPass(hrefReplaced);
-            return UpdateEmojiReplacements(hrefReplaced);
+			inputString = UpdateHrefReplacements(inputString);
+			inputString = UpdateEmojiReplacements(inputString);
+			return inputString;
 		}
 
-		readonly static Regex hrefMatcher = new Regex(@"\[([^\]]+)\]\(([^\]]+)\)");
 
+
+		readonly static Regex hrefMatcher = new Regex(@"\[([^\]]+)\]\(([^\]]+)\)");
 		string UpdateHrefReplacements(string inputString)
 		{
 			var match = hrefMatcher.Match(inputString);
@@ -173,7 +320,81 @@ namespace ui
 			return inputString;
 		}
 
-		void UpdateHrefPosTuples(int index, int count)
+
+
+		void InsertPosEmojiTuples(int index, int count)
+		{
+			if (count != 0)
+			{
+				for (int i = 0; i < emojiReplacements.Count; ++i)
+					{
+						var e = emojiReplacements[i];
+						if (index <= e.pos)
+						{
+							e.pos += count;
+							emojiReplacements[i] = e;
+							for (int j = i + 1; j < emojiReplacements.Count; ++j)
+							{
+								e = emojiReplacements[j];
+								e.pos += count;
+								emojiReplacements[j] = e;
+							}
+							return;
+						}
+					}
+			}
+		}
+
+		void UpdatePosEmojiTuples(int index, int count)
+		{
+			if (count != 0)
+			{
+				for (int i = 0; i < emojiReplacements.Count; ++i)
+					{
+						var e = emojiReplacements[i];
+						if (index < e.pos)
+						{
+							e.pos += count;
+							emojiReplacements[i] = e;
+							for (int j = i + 1; j < emojiReplacements.Count; ++j)
+							{
+								e = emojiReplacements[j];
+								e.pos += count;
+								emojiReplacements[j] = e;
+							}
+							return;
+						}
+					}
+			}
+		}
+
+		void InsertPosHrefTuples(int index, int count)
+		{
+			if (count != 0)
+			{
+				for (int i = 0; i < hrefReplacements.Count; ++i)
+				{
+					var h = hrefReplacements[i];
+					if (index <= h.start || index < h.end)
+					{
+						if (index <= h.start)
+							h.start += count;
+						h.end += count;
+						hrefReplacements[i] = h;
+						for (int j = i + 1; j < hrefReplacements.Count; ++j)
+						{
+							h = hrefReplacements[j];
+							h.start += count;
+							h.end += count;
+							hrefReplacements[j] = h;
+						}
+						return;
+					}
+				}
+			}
+		}
+
+		void UpdatePosHrefTuples(int index, int count)
 		{
 			if (count != 0)
 			{
@@ -199,20 +420,10 @@ namespace ui
 			}
 		}
 
-		string UpdateEmojiReplacementsFirstPass(string inputString)
+		public static void UpdateEmojiReplacements(string inputString, EmojiConfig config, System.Action<string, int> onEmojiChar)
 		{
-			return inputString;
-        }
-
-		string UpdateEmojiReplacements(string inputString)
-		{
-			if (!string.IsNullOrEmpty(inputString) && config != null)
+			if (!string.IsNullOrEmpty(inputString))
 			{
-				var sb = new System.Text.StringBuilder();
-
-				emojiReplacements.Clear();
-
-				string placeHolder = GetPlaceHolder();
 				int i = 0;
 				while (i < inputString.Length)
 				{
@@ -234,41 +445,74 @@ namespace ui
 					if (config.map.TryGetValue(fourChar, out emojiIndex))
 					{
 						// Check 64 bit emojis first
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
-						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 4);
+						onEmojiChar(fourChar, emojiIndex);
 						i += 4;
 					}
 					else if (config.map.TryGetValue(doubleChar, out emojiIndex))
 					{
 						// Then check 32 bit emojis
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
-						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 2);
+						onEmojiChar(doubleChar, emojiIndex);
 						i += 2;
 					}
 					else if (config.map.TryGetValue(singleChar, out emojiIndex))
 					{
-						var emojiStart = sb.Length;
-						sb.Append(placeHolder);
-						var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
-						emojiReplacements.Add(new PosStringTuple(emojiCharStart, emojiIndex));
-						UpdateHrefPosTuples(emojiStart, placeHolder.Length - 1);
+						onEmojiChar(singleChar, emojiIndex);
 						i++;
 					}
 					else
 					{
-						sb.Append(inputString[i]);
+						onEmojiChar(singleChar, -1);
 						i++;
 					}
 				}
-				return sb.ToString();
 			}
-			return string.Empty;
+		}
+
+		string UpdateEmojiReplacements(string inputString)
+		{
+			emojiReplacements.Clear();
+
+			var sb = new System.Text.StringBuilder();
+			string placeHolder = GetPlaceHolder();
+
+			UpdateEmojiReplacements(
+				inputString, config,
+				(emojiChar, emojiIndex) =>
+				{
+					if (emojiIndex != -1)
+					{
+						var charLength = emojiChar.Length;
+						if (charLength == 4)
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 4);
+						}
+						else if (charLength == 2)
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 2);
+						}
+						else
+						{
+							var emojiStart = sb.Length;
+							sb.Append(placeHolder);
+							var emojiCharStart = sb.Length - 1 - 7; // 1 -> emoji char,  7 -> length of "</size>"
+							emojiReplacements.Add(new PosEmojiTuple(emojiCharStart, emojiIndex));
+							UpdatePosHrefTuples(emojiStart, placeHolder.Length - 1);
+						}
+					}
+					else
+					{
+						sb.Append(emojiChar);
+					}
+				});
+			return sb.ToString();
 		}
 
 		readonly UIVertex[] tempVerts = new UIVertex[4];
@@ -295,10 +539,21 @@ namespace ui
 		protected override void OnPopulateMesh(VertexHelper toFill)
 		{
 			base.OnPopulateMesh(toFill);
-			if (config != null)
+			if (shouldEmojilize)
 			{
-				emojiVh.Clear();
 				UIVertex tempVert = new UIVertex();
+
+				if (characterBaseline != 0f)
+				{
+					for (int i = 0; i < toFill.currentVertCount; ++i)
+					{
+						toFill.PopulateUIVertex(ref tempVert, i);
+						tempVert.position = new Vector3(tempVert.position.x, tempVert.position.y + characterBaseline, tempVert.position.z);
+						toFill.SetUIVertex(tempVert, i);
+					}
+				}
+
+				emojiVh.Clear();
 				for (int i = 0; i < emojiReplacements.Count; ++i)
 				{
 					var r = emojiReplacements[i];
@@ -311,12 +566,13 @@ namespace ui
 						for (int j = 0; j < 4; ++j)
 						{
 							toFill.PopulateUIVertex(ref tempVert, baseIndex + j);
+							tempVert.position = new Vector3(tempVert.position.x, tempVert.position.y + emojiBaseline, tempVert.position.z);
 							tempVerts[j] = tempVert;
 							tempVert.color = Color.clear;
 							toFill.SetUIVertex(tempVert, baseIndex + j);
 						}
 						tempVerts[0].color = Color.white;
-                        tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
+						tempVerts[0].uv0 = new Vector2(emojiRect.x, emojiRect.yMax);
 						tempVerts[1].color = Color.white;
 						tempVerts[1].uv0 = new Vector2(emojiRect.xMax, emojiRect.yMax);
 						tempVerts[2].color = Color.white;
@@ -356,34 +612,53 @@ namespace ui
 		protected override void UpdateGeometry()
 		{
 			base.UpdateGeometry();
-			if (config != null)
+			if (shouldEmojilize)
 			{
-				if (emojiCanvasRenderer != null)
-				{
-					emojiVh.FillMesh(emojiWorkMesh);
-					emojiCanvasRenderer.SetMesh(emojiWorkMesh);
-				}
+				CreateEmojiCanvasRenderer();
+
+				emojiVh.FillMesh(emojiWorkMesh);
+				emojiCanvasRenderer.SetMesh(emojiWorkMesh);
 			}
 		}
+		readonly static List<Component> components = new List<Component>();
+		Material GetModifiedEmojiMaterial(Material baseMaterial)
+		{
+			GetComponents(typeof(IMaterialModifier), components);
+			var currentMat = baseMaterial;
+			for (var i = 0; i < components.Count; i++)
+				currentMat = (components[i] as IMaterialModifier).GetModifiedMaterial(currentMat);
+			components.Clear();
+			return currentMat;
+		}
+
 
 		protected override void UpdateMaterial()
 		{
 			base.UpdateMaterial();
-			if (config != null)
+			if (shouldEmojilize)
 			{
 				if (IsActive())
 				{
-					if (emojiCanvasRenderer != null)
-					{
-						emojiCanvasRenderer.materialCount = 1;
+					CreateEmojiCanvasRenderer();
+
+					emojiCanvasRenderer.materialCount = 1;
+					if (config.material != null)
+						emojiCanvasRenderer.SetMaterial(GetModifiedEmojiMaterial(config.material), 0);
+					else
 						emojiCanvasRenderer.SetMaterial(materialForRendering, 0);
-						emojiCanvasRenderer.SetTexture(config.texture);
-					}
+					emojiCanvasRenderer.SetTexture(config.texture);
+				}
+			}
+			else
+			{
+				if (emojiCanvasRenderer != null)
+				{
+					emojiCanvasRenderer.Clear();
 				}
 			}
 		}
 
-		protected virtual void RaycastOnHrefs(Vector2 sp, Camera eventCamera)
+		protected virtual string RaycastOnHrefs(Vector2 sp, Camera eventCamera)
 		{
 			if (hrefReplacements.Count > 0)
 			{
@@ -412,19 +687,13 @@ namespace ui
 							{
 								continue;
 							}
-							hrefOnClickedEvent.Invoke(hrefOnClickedEventName, h.href);
-							return; // once a time
+							return h.href; // once a time
 						}
 					}
 					hrefStartIndex += count;
 				}
-
 			}
-		}
-
-		public void OnPointerClick(PointerEventData eventData)
-		{
-			RaycastOnHrefs(eventData.position, null);
+			return string.Empty;
 		}
 	}
 }
